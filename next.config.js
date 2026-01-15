@@ -1,12 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
-    // Hataları görmezden gel
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Hataları görmezden gel
     ignoreBuildErrors: true,
+  },
+  // --- YENİ EKLENEN KISIM (CANVAS HATASI İÇİN) ---
+  webpack: (config) => {
+    config.resolve.alias.canvas = false;
+    return config;
   },
 };
 

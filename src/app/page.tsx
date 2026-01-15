@@ -1,5 +1,8 @@
 "use client";
 
+import { RSVPReader } from "@/components/RSVPReader"; 
+import { FileUploader } from "@/components/FileUploader";
+import { CameraOCR } from "@/components/CameraOCR";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -27,7 +30,7 @@ export default function HomePage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [tempText, setTempText] = useState("");
   const [leaderboard, setLeaderboard] = useState<any[]>([]); 
-
+  const [isRSVPMode, setIsRSVPMode] = useState(false);
   const wordContainerRef = useRef<HTMLDivElement>(null);
   const words = content.split(/[\s\n]+/).filter(w => w.length > 0);
 
@@ -155,6 +158,29 @@ export default function HomePage() {
            </div>
         </div>
 
+        {/* DOSYA YÜKLEME ALANI */}
+        <div className="max-w-4xl mx-auto w-full mb-6">
+            <FileUploader onTextLoaded={(text) => {
+                // 1. Metni kutuya yaz
+                setTempText(text);
+                
+                // 2. Metni sisteme kaydet (Otomatik "Kaydet" butonu etkisi)
+                setContent(text);
+                
+                // 3. Kullanıcıya haber ver (Tarayıcı uyarısı)
+                alert("Dosya başarıyla okundu ve sisteme yüklendi! Hazır olunca BAŞLAT'a bas.");
+            }} />
+        </div>
+
+        {/* KAMERA / OCR ALANI */}
+        <div className="max-w-4xl mx-auto w-full mb-8">
+            <CameraOCR onTextLoaded={(text) => {
+                setTempText(text);
+                setContent(text); // Otomatik kaydet
+                alert("Görüntü metne çevrildi! Hazırsan BAŞLAT'a bas.");
+            }} />
+        </div>
+
         {/* KONTROLLER */}
         <Card className="p-6 border-slate-800 bg-slate-900/50 backdrop-blur-md shadow-xl">
           <div className="flex flex-col gap-6">
@@ -166,6 +192,15 @@ export default function HomePage() {
               <Button variant="outline" onClick={handleOpenEdit} className="bg-transparent border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
                 <Edit2 className="mr-2 h-4 w-4" /> Metni Düzenle
               </Button>
+            </div>
+            {/* RSVP BUTONU */}
+            <div className="flex justify-center mt-6 mb-2">
+                <Button 
+                    onClick={() => setIsRSVPMode(true)}
+                    className="bg-zinc-900 border border-red-900/50 hover:border-red-500 text-red-500 hover:text-white hover:bg-red-600/10 transition-all duration-300 w-full max-w-md py-6 text-lg font-mono tracking-widest uppercase"
+                >
+                    ⚡ RSVP Modunu Başlat ⚡
+                </Button>
             </div>
             <div className="space-y-4">
               <Slider value={[wpm]} onValueChange={(v) => setWpm(v[0])} min={100} max={1000} step={10} />
@@ -279,6 +314,16 @@ export default function HomePage() {
             <DialogFooter><Button variant="outline" onClick={() => setIsDialogOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800">İptal</Button><Button onClick={handleSaveText} className="bg-white text-black hover:bg-slate-200">Kaydet</Button></DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* RSVP MODAL */}
+        {isRSVPMode && (
+            <RSVPReader 
+                content={tempText} 
+                wpm={wpm}
+                onClose={() => setIsRSVPMode(false)}
+                onComplete={() => setIsRSVPMode(false)}
+            />
+        )}
       </div>
     </main>
   );

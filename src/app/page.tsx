@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react"; // Suspense eklendi
+import { useState, useEffect, Suspense } from "react";
 import { UserButton, useUser, SignInButton } from "@clerk/nextjs";
 import { supabase } from "@/lib/supabase";
 import { 
@@ -13,9 +13,13 @@ import { CalibrationModal } from "@/components/CalibrationModal";
 import { DisclaimerModal } from "@/components/DisclaimerModal";
 import Link from "next/link";
 
-// 1. TÜM MANTIĞI 'HomeContent' ADINDA BİR KOMPONENT İÇİNE ALIYORUZ
+// --- İÇERİK BİLEŞENİ (LOGIC BURADA) ---
 function HomeContent() {
   const { user, isLoaded } = useUser();
+  
+  // Eğer kullanıcı yüklenmediyse boş dön (Hata önleyici)
+  if (!isLoaded) return <div className="min-h-screen bg-black text-white p-8">Yükleniyor...</div>;
+
   const [readingState, setReadingState] = useState<{
     isActive: boolean;
     content: string;
@@ -23,7 +27,6 @@ function HomeContent() {
     bookId?: string;
   }>({ isActive: false, content: "", wpm: 300 });
 
-  // İstatistikler
   const [stats, setStats] = useState({
     totalWords: 0,
     totalTime: 0,
@@ -31,38 +34,53 @@ function HomeContent() {
     level: "NOVICE"
   });
 
-  // Profil verisini çek
+  // Profil verisini çek veya oluştur
   useEffect(() => {
-    if (user) {
-      fetchStats();
-    }
+    const initProfile = async () => {
+      if (!user) return;
+
+      try {
+        // 1. Önce profili bulmaya çalış
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+
+        if (data) {
+          setStats({
+            totalWords: data.total_words_read || 0,
+            totalTime: Math.round((data.total_reading_time_sec || 0) / 60),
+            streak: data.current_streak || 0,
+            level: data.mastery_level || "NOVICE"
+          });
+        } else {
+          // 2. Profil yoksa sessizce oluştur (Insert)
+          console.log("Profil bulunamadı, yeni oluşturuluyor...");
+          const { error: insertError } = await supabase
+            .from("user_profiles")
+            .insert([{ 
+                user_id: user.id,
+                email: user.primaryEmailAddress?.emailAddress,
+                total_words_read: 0,
+                mastery_level: "NOVICE"
+            }]);
+            
+          if (insertError) console.error("Profil oluşturma hatası:", insertError);
+        }
+      } catch (err) {
+        console.error("Kritik profil hatası:", err);
+      }
+    };
+
+    initProfile();
   }, [user]);
 
-  const fetchStats = async () => {
-    if(!user) return;
-    const { data } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-
-    if (data) {
-      setStats({
-        totalWords: data.total_words_read || 0,
-        totalTime: Math.round((data.total_reading_time_sec || 0) / 60),
-        streak: data.current_streak || 0,
-        level: data.mastery_level || "NOVICE"
-      });
-    }
-  };
-
   const handleBookSelect = (book: any) => {
-    // Profildeki hızı alalım (yoksa 300)
-    const userWpm = 300; 
     setReadingState({
       isActive: true,
       content: book.content,
-      wpm: userWpm,
+      wpm: 300,
       bookId: book.id
     });
   };
@@ -74,7 +92,7 @@ function HomeContent() {
       {user && <CalibrationModal userId={user.id} onComplete={() => window.location.reload()} />}
       <DisclaimerModal onAccept={() => {}} />
 
-      {/* OKUMA MODU AKTİFSE */}
+      {/* OKUMA MODU */}
       {readingState.isActive && (
         <RSVPReader 
           content={readingState.content}
@@ -95,9 +113,6 @@ function HomeContent() {
             <span className="text-xl font-bold bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent">
               Neuro-Read
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-500 border border-zinc-800 ml-2">
-              v2.0 Beta
-            </span>
           </div>
 
           <div className="flex items-center gap-6">
@@ -108,96 +123,60 @@ function HomeContent() {
                 </button>
               </SignInButton>
             ) : (
-              <div className="flex items-center gap-4">
-                <div className="hidden md:flex flex-col items-end mr-2">
-                   <span className="text-xs text-zinc-400">Hoş geldin,</span>
-                   <span className="text-sm font-bold text-white">{user.firstName}</span>
-                </div>
-                <UserButton afterSignOutUrl="/"/>
-              </div>
+              <UserButton afterSignOutUrl="/"/>
             )}
           </div>
         </div>
       </nav>
 
-      {/* HERO SECTION */}
+      {/* DASHBOARD */}
       <main className="pt-32 pb-20 px-6 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           
-          {/* SOL: Dashboard */}
           <div className="lg:col-span-8 space-y-8">
             <div className="grid grid-cols-3 gap-4">
                <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-                  <div className="flex items-center gap-3 mb-2 text-zinc-400">
-                     <BookOpen className="w-4 h-4"/> <span>Toplam Kelime</span>
-                  </div>
-                  <div className="text-3xl font-black text-white">{stats.totalWords.toLocaleString()}</div>
+                  <div className="text-zinc-400 mb-2">Toplam Kelime</div>
+                  <div className="text-3xl font-black text-white">{stats.totalWords}</div>
                </div>
                <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-                  <div className="flex items-center gap-3 mb-2 text-zinc-400">
-                     <Activity className="w-4 h-4"/> <span>Odak Süresi</span>
-                  </div>
-                  <div className="text-3xl font-black text-white">{stats.totalTime} <span className="text-sm font-normal text-zinc-600">dk</span></div>
+                  <div className="text-zinc-400 mb-2">Süre (Dk)</div>
+                  <div className="text-3xl font-black text-white">{stats.totalTime}</div>
                </div>
-               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-10"><Trophy className="w-24 h-24 text-yellow-500"/></div>
-                  <div className="flex items-center gap-3 mb-2 text-zinc-400">
-                     <Zap className="w-4 h-4 text-yellow-500"/> <span>Seviye</span>
-                  </div>
-                  <div className="text-3xl font-black text-white uppercase">{stats.level}</div>
+               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
+                  <div className="text-zinc-400 mb-2">Seviye</div>
+                  <div className="text-3xl font-black text-white">{stats.level}</div>
                </div>
             </div>
 
-            <div className="p-8 rounded-3xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800">
+            <div className="p-8 rounded-3xl bg-zinc-900 border border-zinc-800">
                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold flex items-center gap-2">
-                    <LayoutDashboard className="w-6 h-6 text-purple-500"/> 
-                    Kütüphanem
-                  </h2>
-                  <Link href="/library">
-                    <button className="text-sm text-zinc-400 hover:text-white flex items-center gap-1 transition">
-                       Tümünü Gör <ArrowRight className="w-4 h-4"/>
-                    </button>
-                  </Link>
+                  <h2 className="text-2xl font-bold">Kütüphanem</h2>
+                  <Link href="/library" className="text-sm text-purple-400 hover:text-purple-300">Tümünü Gör →</Link>
                </div>
-               
-               <div className="group relative p-6 bg-black/40 rounded-xl border border-zinc-800 hover:border-purple-500/50 transition-all cursor-pointer"
-                    onClick={() => handleBookSelect({ id: 'demo', content: 'Bu bir deneme metnidir.', title: 'Hızlı Başlangıç Rehberi' })}
-               >
-                  <div className="flex justify-between items-start">
-                     <div>
-                        <h3 className="text-lg font-bold text-white mb-2 group-hover:text-purple-400 transition-colors">Hızlı Başlangıç Rehberi</h3>
-                        <p className="text-zinc-500 text-sm line-clamp-2">Sistemi test etmek ve kalibrasyon yapmak için kısa bir metin.</p>
-                     </div>
-                     <div className="p-3 bg-purple-500/10 rounded-full text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition-all">
-                        <PlayCircle className="w-6 h-6" />
-                     </div>
-                  </div>
+               <div onClick={() => handleBookSelect({ id: 'demo', content: 'Bu bir test metnidir.', title: 'Demo' })} 
+                    className="p-6 bg-black/40 rounded-xl border border-zinc-800 hover:border-purple-500 cursor-pointer transition">
+                  <h3 className="font-bold">Hızlı Başlangıç</h3>
+                  <p className="text-zinc-500 text-sm">Sistemi test etmek için tıkla.</p>
                </div>
             </div>
           </div>
 
-          {/* SAĞ: Menü */}
           <div className="lg:col-span-4 space-y-6">
              <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
-                <h3 className="font-bold text-zinc-400 mb-4 text-sm uppercase tracking-wider">Hızlı Erişim</h3>
-                <div className="space-y-2">
-                   <Link href="/library" className="block w-full text-left p-4 rounded-lg bg-zinc-950 hover:bg-zinc-800 transition border border-zinc-900 hover:border-zinc-700">
-                      📚 Kütüphaneye Git
-                   </Link>
-                   <Link href="/admin" className="block w-full text-left p-4 rounded-lg bg-zinc-950 hover:bg-zinc-800 transition border border-zinc-900 hover:border-zinc-700">
-                      ⚙️ İçerik Yönetimi (Admin)
-                   </Link>
-                </div>
+                <Link href="/library" className="block w-full text-center p-4 rounded-lg bg-white text-black font-bold hover:bg-zinc-200 transition">
+                   📚 Kütüphaneye Git
+                </Link>
              </div>
           </div>
+
         </div>
       </main>
     </div>
   );
 }
 
-// 2. ANA EXPORT ARTIK SUSPENSE İÇİNDE! İŞTE ÇÖZÜM BU.
+// --- ANA EXPORT (VERCEL'İN HATA VERDİĞİ YERİ DÜZELTEN KISIM) ---
 export default function Home() {
   return (
     <Suspense fallback={<div className="flex h-screen w-full items-center justify-center bg-black text-white">Yükleniyor...</div>}>

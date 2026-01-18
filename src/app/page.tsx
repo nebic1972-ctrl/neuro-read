@@ -1,6 +1,6 @@
 "use client";
 
-// 1. BU SATIR VERCEL HATASINI KÖKTEN ÇÖZER (Statik derlemeyi kapatır)
+// Vercel Build Hatasını Önleyen Sihirli Satır
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, Suspense } from "react";
@@ -9,17 +9,19 @@ import { supabase } from "@/lib/supabase";
 import { 
   BookOpen, Brain, Zap, Activity, 
   ArrowRight, LayoutDashboard, 
-  Settings, PlayCircle, Trophy 
+  Trophy 
 } from "lucide-react";
 import { RSVPReader } from "@/components/RSVPReader"; 
 import { CalibrationModal } from "@/components/CalibrationModal"; 
 import { DisclaimerModal } from "@/components/DisclaimerModal";
 import Link from "next/link";
 
-// --- İÇERİK MANTIĞI ---
 function HomeContent() {
   const { user, isLoaded } = useUser();
   
+  // Modalı kontrol eden değişken (Varsayılan: Kapalı)
+  const [showCalibration, setShowCalibration] = useState(false);
+
   const [readingState, setReadingState] = useState<{
     isActive: boolean;
     content: string;
@@ -34,9 +36,9 @@ function HomeContent() {
     level: "NOVICE"
   });
 
-  // Profil Yükleme
+  // Profil Kontrolü
   useEffect(() => {
-    async function loadProfile() {
+    async function checkProfile() {
       if (!user) return;
 
       try {
@@ -47,6 +49,7 @@ function HomeContent() {
           .maybeSingle();
 
         if (data) {
+          // Profil varsa verileri çek
           setStats({
             totalWords: data.total_words_read || 0,
             totalTime: Math.round((data.total_reading_time_sec || 0) / 60),
@@ -54,12 +57,9 @@ function HomeContent() {
             level: data.mastery_level || "NOVICE"
           });
         } else {
-          // Profil yoksa oluştur
-          await supabase.from("user_profiles").insert([{ 
-             user_id: user.id,
-             email: user.primaryEmailAddress?.emailAddress,
-             mastery_level: "NOVICE"
-          }]);
+          // Profil YOKSA testi aç!
+          console.log("Profil bulunamadı, test açılıyor...");
+          setShowCalibration(true);
         }
       } catch (err) {
         console.error("Profil hatası:", err);
@@ -67,7 +67,7 @@ function HomeContent() {
     }
 
     if (isLoaded && user) {
-      loadProfile();
+      checkProfile();
     }
   }, [user, isLoaded]);
 
@@ -75,14 +75,30 @@ function HomeContent() {
     setReadingState({ isActive: true, content: book.content, wpm: 300, bookId: book.id });
   };
 
+  // Test Bittiğinde Çalışacak Fonksiyon
+  const handleCalibrationComplete = () => {
+    // ÖNEMLİ: Sayfayı yenilemek yerine sadece modalı kapatıyoruz!
+    // Bu sayede veritabanı hatası olsa bile içeri girersin.
+    setShowCalibration(false);
+  };
+
   if (!isLoaded) {
-    return <div className="min-h-screen bg-black flex items-center justify-center text-white">Sistem Yükleniyor...</div>;
+    return <div className="min-h-screen bg-black flex items-center justify-center text-white">Yükleniyor...</div>;
   }
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30">
-      {user && <CalibrationModal userId={user.id} onComplete={() => window.location.reload()} />}
-      {/* <DisclaimerModal onAccept={() => {}} />  <- Bunu geçici olarak kapattık */}
+      
+      {/* SADECE GEREKTİĞİNDE AÇILAN MODAL */}
+      {user && showCalibration && (
+        <CalibrationModal 
+          userId={user.id} 
+          onComplete={handleCalibrationComplete} 
+        />
+      )}
+      
+      {/* Yasal Uyarıyı Şimdilik Kapalı Tutuyoruz */}
+      {/* <DisclaimerModal onAccept={() => {}} /> */}
 
       {readingState.isActive && (
         <RSVPReader 
@@ -127,7 +143,6 @@ function HomeContent() {
   );
 }
 
-// 2. SUSPENSE'İ KORUYORUZ (ÇİFTE GÜVENLİK)
 export default function Home() {
   return (
     <Suspense fallback={<div className="flex h-screen w-full items-center justify-center bg-black text-white">Yükleniyor...</div>}>

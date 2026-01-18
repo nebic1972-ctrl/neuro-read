@@ -73,11 +73,10 @@ export function CalibrationModal({ userId, onComplete }: CalibrationModalProps) 
     }
   };
 
-  // PANELE GİT (Hata olsa bile çalışır)
+  // PANELE GİT (Hata olsa bile çalışır — reload yok, sadece modal kapanır)
   const handleGoToDashboard = () => {
     setIsOpen(false);
-    onComplete(); // Ana sayfadaki kilidi açar
-    window.location.reload(); // Garanti olsun diye sayfayı yeniler
+    onComplete();
   };
 
   return (

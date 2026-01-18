@@ -1,5 +1,8 @@
 "use client";
 
+// 1. BU SATIR VERCEL HATASINI KÖKTEN ÇÖZER (Statik derlemeyi kapatır)
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect, Suspense } from "react";
 import { UserButton, useUser, SignInButton } from "@clerk/nextjs";
 import { supabase } from "@/lib/supabase";
@@ -15,7 +18,6 @@ import Link from "next/link";
 
 // --- İÇERİK MANTIĞI ---
 function HomeContent() {
-  // 1. HOOK'LAR EN BAŞTA (SIRALAMA ÖNEMLİ)
   const { user, isLoaded } = useUser();
   
   const [readingState, setReadingState] = useState<{
@@ -32,13 +34,12 @@ function HomeContent() {
     level: "NOVICE"
   });
 
-  // 2. PROFİL YÜKLEME
+  // Profil Yükleme
   useEffect(() => {
     async function loadProfile() {
       if (!user) return;
 
       try {
-        // Profil var mı kontrol et
         const { data, error } = await supabase
           .from("user_profiles")
           .select("*")
@@ -53,17 +54,15 @@ function HomeContent() {
             level: data.mastery_level || "NOVICE"
           });
         } else {
-          // Yoksa oluştur
-          const { error: insertError } = await supabase
-            .from("user_profiles")
-            .insert([{ 
-                user_id: user.id,
-                email: user.primaryEmailAddress?.emailAddress,
-                mastery_level: "NOVICE"
-            }]);
+          // Profil yoksa oluştur
+          await supabase.from("user_profiles").insert([{ 
+             user_id: user.id,
+             email: user.primaryEmailAddress?.emailAddress,
+             mastery_level: "NOVICE"
+          }]);
         }
       } catch (err) {
-        console.error("Profil yükleme hatası:", err);
+        console.error("Profil hatası:", err);
       }
     }
 
@@ -72,14 +71,13 @@ function HomeContent() {
     }
   }, [user, isLoaded]);
 
-  // 3. YÜKLENİYOR EKRANI (Hook'lardan SONRA olmalı)
-  if (!isLoaded) {
-    return <div className="min-h-screen bg-black flex items-center justify-center text-white">Sistem Yükleniyor...</div>;
-  }
-
   const handleBookSelect = (book: any) => {
     setReadingState({ isActive: true, content: book.content, wpm: 300, bookId: book.id });
   };
+
+  if (!isLoaded) {
+    return <div className="min-h-screen bg-black flex items-center justify-center text-white">Sistem Yükleniyor...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30">
@@ -91,7 +89,7 @@ function HomeContent() {
           content={readingState.content}
           wpm={readingState.wpm}
           onClose={() => setReadingState({...readingState, isActive: false})}
-          onComplete={(sessionStats) => setReadingState({...readingState, isActive: false})}
+          onComplete={() => setReadingState({...readingState, isActive: false})}
         />
       )}
 
@@ -129,7 +127,7 @@ function HomeContent() {
   );
 }
 
-// 4. SUSPENSE EKLENTİSİ (VERCEL İÇİN ŞART)
+// 2. SUSPENSE'İ KORUYORUZ (ÇİFTE GÜVENLİK)
 export default function Home() {
   return (
     <Suspense fallback={<div className="flex h-screen w-full items-center justify-center bg-black text-white">Yükleniyor...</div>}>

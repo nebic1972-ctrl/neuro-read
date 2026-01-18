@@ -82,7 +82,7 @@ function HomeContent() {
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30">
       {user && <CalibrationModal userId={user.id} onComplete={() => window.location.reload()} />}
-      <DisclaimerModal onAccept={() => {}} />
+      {/* <DisclaimerModal onAccept={() => {}} />  <- Bunu geçici olarak kapattık */}
 
       {readingState.isActive && (
         <RSVPReader 

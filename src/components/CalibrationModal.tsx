@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
-import { Loader2, Play, CheckCircle2, Brain } from "lucide-react";
-import { RSVPReader } from "@/components/RSVPReader"; // Okuyucuyu içeri alıyoruz
+import { Loader2, Play, Brain, ArrowRight } from "lucide-react";
+import { RSVPReader } from "@/components/RSVPReader";
 
 interface CalibrationModalProps {
   userId: string;
@@ -21,63 +21,69 @@ export function CalibrationModal({ userId, onComplete }: CalibrationModalProps) 
   // Test Metni
   const testContent = "Hızlı okuma, beynin bilgiyi işleme hızını artırmayı hedefleyen bir tekniktir. Göz kaslarını eğiterek ve iç seslendirmeyi azaltarak daha kısa sürede daha çok kelime okuyabilirsiniz. Bu kısa test, mevcut seviyenizi belirlemek içindir. Lütfen odaklanarak okuyun.";
 
-  // Başlangıçta kullanıcının testi yapıp yapmadığını kontrol et
+  // Profil kontrolü
   useEffect(() => {
     async function checkProfile() {
       const { data } = await supabase
         .from("user_profiles")
         .select("total_words_read")
         .eq("user_id", userId)
-        .single();
+        .maybeSingle(); // maybeSingle hata vermez
       
-      // Eğer hiç okuma yapmamışsa (0 kelime), testi başlat
+      // Kayıt yoksa veya hiç okumamışsa testi aç
       if (!data || data.total_words_read === 0) {
         setIsOpen(true);
       }
     }
-    checkProfile();
+    if (userId) checkProfile();
   }, [userId]);
 
   const handleTestComplete = async (stats: { wpm: number; duration: number }) => {
     setWpmResult(stats.wpm);
     setStep("RESULT");
-    await saveProfile(stats.wpm, stats.duration);
+    // Arka planda kaydetmeyi dene ama kullanıcıyı bekletme
+    saveProfile(stats.wpm, stats.duration);
   };
 
   const saveProfile = async (wpm: number, duration: number) => {
-    setLoading(true);
     try {
-      // Seviyeyi belirle
       let level = "NOVICE";
       if (wpm > 300) level = "APPRENTICE";
       if (wpm > 600) level = "MASTER";
 
-      // Veritabanına kaydet
+      console.log("Kaydediliyor...", { userId, level, wpm });
+
       const { error } = await supabase
         .from("user_profiles")
         .upsert({ 
             user_id: userId,
             mastery_level: level,
-            total_words_read: 40, // Test metni yaklaşık uzunluğu
+            total_words_read: 40, 
             total_reading_time_sec: duration,
             current_streak: 1
         }, { onConflict: "user_id" });
 
-      if (error) throw error;
-      console.log("Teşhis kaydedildi:", level);
-
+      if (error) {
+        console.error("Supabase Hatası:", error);
+      } else {
+        console.log("Başarıyla kaydedildi.");
+      }
     } catch (error) {
-      console.error("Kayıt hatası:", error);
-    } finally {
-      setLoading(false);
+      console.error("Beklenmeyen hata:", error);
     }
+  };
+
+  // PANELE GİT (Hata olsa bile çalışır)
+  const handleGoToDashboard = () => {
+    setIsOpen(false);
+    onComplete(); // Ana sayfadaki kilidi açar
+    window.location.reload(); // Garanti olsun diye sayfayı yeniler
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={() => {}}>
-      <DialogContent className="bg-zinc-950 border-zinc-800 text-white sm:max-w-[600px]">
+      <DialogContent className="bg-zinc-950 border-zinc-800 text-white sm:max-w-[600px] [&>button]:hidden">
         
-        {/* ADIM 1: GİRİŞ EKRANI */}
         {step === "INTRO" && (
           <>
             <DialogHeader>
@@ -99,19 +105,15 @@ export function CalibrationModal({ userId, onComplete }: CalibrationModalProps) 
           </>
         )}
 
-        {/* ADIM 2: OKUMA EKRANI (RSVP READER) */}
         {step === "READING" && (
-          <div className="h-[300px] w-full">
-            <RSVPReader 
-              content={testContent} 
-              wpm={300} // Başlangıç hızı
-              onClose={() => setStep("INTRO")} 
-              onComplete={handleTestComplete}
-            />
-          </div>
+          <RSVPReader 
+            content={testContent} 
+            wpm={300} 
+            onClose={() => setStep("INTRO")} 
+            onComplete={handleTestComplete}
+          />
         )}
 
-        {/* ADIM 3: SONUÇ VE KAPANIŞ */}
         {step === "RESULT" && (
           <>
             <DialogHeader>
@@ -123,14 +125,10 @@ export function CalibrationModal({ userId, onComplete }: CalibrationModalProps) 
               <p className="text-sm text-zinc-500">Profilin buna göre ayarlandı.</p>
             </div>
             <Button 
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold"
-              onClick={() => {
-                setIsOpen(false);
-                onComplete();
-              }}
-              disabled={loading}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold h-12 text-lg"
+              onClick={handleGoToDashboard}
             >
-              {loading ? <Loader2 className="animate-spin"/> : "Panale Git"}
+              Panele Git <ArrowRight className="ml-2 w-5 h-5"/>
             </Button>
           </>
         )}

@@ -1,44 +1,43 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { X, Play, Pause, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, RotateCcw, X, Zap } from "lucide-react";
-import { AIQuizModal } from "@/components/AIQuizModal"; // ✅ YENİ
-import { Card } from "@/components/ui/card"; // Loading için
 
 interface RSVPReaderProps {
   content: string;
   wpm: number;
-  isAdhdMode?: boolean;
   onClose: () => void;
-  onComplete: (stats: { wpm: number; duration: number; quizScore: number }) => void; // ✅ Skor eklendi
+  onComplete: (stats: { wpm: number; duration: number }) => void;
 }
 
-export function RSVPReader({ content, wpm, isAdhdMode = false, onClose, onComplete }: RSVPReaderProps) {
-  // Metin İşleme
-  const words = content.split(/\s+/).filter((w) => w.length > 0);
+export function RSVPReader({ content, wpm, onClose, onComplete }: RSVPReaderProps) {
+  const [words, setWords] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [localWpm, setLocalWpm] = useState(wpm);
+  const [startTime, setStartTime] = useState<number | null>(null);
   
-  // Quiz State'leri (YENİ)
-  const [quizStatus, setQuizStatus] = useState<"reading" | "generating" | "quizzing">("reading");
-  const [questions, setQuestions] = useState<any[]>([]);
-  const startTimeRef = useRef<number>(0);
+  // Kelimeleri hazırla
+  useEffect(() => {
+    if (content) {
+      setWords(content.split(/\s+/).filter(w => w.length > 0));
+    }
+  }, [content]);
 
-  // Sayaç ve Motor
+  // Zamanlayıcı (Motor)
   useEffect(() => {
     let interval: NodeJS.Timeout;
-
     if (isPlaying && currentIndex < words.length) {
-      if (currentIndex === 0) startTimeRef.current = Date.now();
+      if (!startTime) setStartTime(Date.now());
       
-      const delay = 60000 / localWpm;
+      const delay = 60000 / wpm; // Kelime başına düşen milisaniye
+      
       interval = setInterval(() => {
         setCurrentIndex((prev) => {
           if (prev >= words.length - 1) {
             setIsPlaying(false);
-            handleReadingFinished(); // ✅ Okuma bitince buraya git
+            const duration = (Date.now() - (startTime || Date.now())) / 1000;
+            onComplete({ wpm, duration });
             return prev;
           }
           return prev + 1;
@@ -46,144 +45,72 @@ export function RSVPReader({ content, wpm, isAdhdMode = false, onClose, onComple
       }, delay);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, currentIndex, localWpm, words.length]);
+  }, [isPlaying, currentIndex, words, wpm, startTime, onComplete]);
 
-  // --- OKUMA BİTTİĞİNDE ÇALIŞAN FONKSİYON ---
-  const handleReadingFinished = async () => {
-    setQuizStatus("generating"); // Ekranda "Yapay Zeka Düşünüyor" yazacak
-    
-    try {
-        console.log("Soru üretimi için API çağrılıyor...");
-        
-        // 1. API'ye metni gönder
-        const response = await fetch("/api/quiz", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: content })
-        });
-
-        const data = await response.json();
-        console.log("Gelen Sorular:", data);
-
-        if (Array.isArray(data) && data.length > 0) {
-            setQuestions(data);
-            setQuizStatus("quizzing"); // Quiz ekranını aç
-        } else {
-            // Soru gelmezse direkt bitir (Fallback)
-            finishSession(0); 
-        }
-
-    } catch (error) {
-        console.error("Quiz hatası:", error);
-        finishSession(0); // Hata olursa skorsuz bitir
-    }
-  };
-
-  // --- QUİZ BİTTİĞİNDE ÇALIŞAN FONKSİYON ---
-  const handleQuizComplete = (score: number) => {
-      finishSession(score);
-  };
-
-  // --- SEANSI KAPATMA ---
-  const finishSession = (finalScore: number) => {
-      const durationSec = (Date.now() - startTimeRef.current) / 1000;
-      onComplete({
-          wpm: localWpm,
-          duration: durationSec,
-          quizScore: finalScore // ✅ Gerçek skoru gönderiyoruz
-      });
-  };
-
-  // --- RENDER (GÖRÜNÜM) ---
-
-  // 1. Yükleniyor Ekranı (Gemini Düşünürken)
-  if (quizStatus === "generating") {
-      return (
-          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 backdrop-blur text-white">
-              <div className="p-4 bg-purple-500/20 rounded-full animate-pulse mb-4">
-                  <Zap className="w-12 h-12 text-purple-500" />
-              </div>
-              <h2 className="text-2xl font-bold mb-2">Nöro-Analiz Yapılıyor...</h2>
-              <p className="text-zinc-400">Yapay Zeka okuduğunuz metinden sorular hazırlıyor.</p>
-          </div>
-      );
-  }
-
-  // 2. Quiz Ekranı (Sorular Geldiğinde)
-  if (quizStatus === "quizzing") {
-      return <AIQuizModal questions={questions} onComplete={handleQuizComplete} />;
-  }
-
-  // 3. Okuma Ekranı (Standart RSVP)
-  const currentWord = words[currentIndex] || "";
-  const pivotIndex = Math.ceil(currentWord.length / 2) - 1;
-  const leftPart = currentWord.slice(0, pivotIndex);
-  const centerChar = currentWord[pivotIndex];
-  const rightPart = currentWord.slice(pivotIndex + 1);
+  // İlerleme çubuğu yüzdesi
+  const progress = words.length > 0 ? ((currentIndex + 1) / words.length) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
-      {/* Üst Bar */}
-      <div className="flex items-center justify-between p-6">
-        <div className="flex items-center gap-4">
-           <div className="text-3xl font-black text-purple-500">{localWpm} WPM</div>
-           {isAdhdMode && <span className="bg-blue-900/50 text-blue-400 text-xs px-2 py-1 rounded border border-blue-800">Yüksek Odak Modu</span>}
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 text-white">
+      {/* Kapatma Butonu */}
+      <button onClick={onClose} className="absolute top-8 right-8 p-2 hover:bg-zinc-800 rounded-full transition">
+        <X className="w-8 h-8 text-zinc-400" />
+      </button>
+
+      {/* OKUMA ALANI */}
+      <div className="w-full max-w-4xl px-4 text-center space-y-12">
+        <div className="relative h-64 flex items-center justify-center">
+          {/* Odak Çizgileri */}
+          <div className="absolute top-0 bottom-0 w-1 bg-red-500/20 left-1/2 -translate-x-1/2"></div>
+          <div className="absolute left-0 right-0 h-1 bg-red-500/20 top-1/2 -translate-y-1/2"></div>
+          
+          {/* Kelime Gösterimi - TAŞMAYI ÖNLEYEN KISIM */}
+          <div className="z-10 font-mono font-bold text-white relative">
+             <span className={`block leading-none transition-all duration-100 ${
+               words[currentIndex]?.length > 12 ? "text-5xl md:text-7xl" : "text-7xl md:text-9xl"
+             }`}>
+               {words[currentIndex]}
+             </span>
+          </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}><X className="w-8 h-8" /></Button>
-      </div>
 
-      {/* Odak Alanı */}
-      <div className="flex-1 flex items-center justify-center relative">
-        {/* ADHD Çerçevesi */}
-        {isAdhdMode && (
-           <div className="absolute w-[600px] h-[300px] border-y-2 border-blue-500/30 bg-blue-500/5 pointer-events-none"></div>
-        )}
-        
-        {/* Kelime Gösterimi */}
-        <div className="relative text-7xl md:text-9xl font-mono tracking-wide select-none">
-           {/* Odak Çizgileri */}
-           <div className="absolute left-1/2 -translate-x-1/2 -top-10 bottom-12 w-0.5 bg-zinc-800"></div>
-           <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-[300px] h-0.5 bg-zinc-800"></div>
-
-           <span className="text-zinc-500">{leftPart}</span>
-           <span className="text-white font-bold scale-110 inline-block transform origin-bottom border-b-4 border-purple-500">{centerChar}</span>
-           <span className="text-zinc-500">{rightPart}</span>
-        </div>
-      </div>
-
-      {/* Kontrol Paneli */}
-      <div className="p-12 flex flex-col items-center gap-6 max-w-2xl mx-auto w-full">
-         {/* İlerleme Çubuğu */}
-         <div className="w-full h-2 bg-zinc-900 rounded-full overflow-hidden">
-            <div className="h-full bg-purple-600 transition-all duration-300" style={{ width: `${(currentIndex / words.length) * 100}%` }}></div>
-         </div>
-
-         {/* Butonlar */}
-         <div className="flex items-center gap-6">
-            <Button variant="outline" size="icon" className="w-14 h-14 rounded-full border-zinc-800" onClick={() => setCurrentIndex(0)}>
-               <RotateCcw className="w-6 h-6" />
-            </Button>
-
+        {/* Kontroller */}
+        <div className="flex flex-col items-center gap-6">
+          <div className="flex items-center gap-4">
             <Button 
-              size="icon" 
-              className={`w-24 h-24 rounded-full transition-all ${isPlaying ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-green-600 hover:bg-green-500 scale-110'}`}
+              variant="outline" 
+              size="icon"
+              className="w-16 h-16 rounded-full border-2 border-zinc-700 hover:bg-zinc-800 hover:border-white transition-all"
               onClick={() => setIsPlaying(!isPlaying)}
             >
-               {isPlaying ? <Pause className="w-10 h-10 fill-current" /> : <Play className="w-10 h-10 fill-current ml-2" />}
+              {isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current ml-1" />}
             </Button>
             
-            {/* Hız Ayarı */}
-            <div className="flex items-center gap-2 bg-zinc-900 p-2 rounded-lg border border-zinc-800">
-               <input 
-                 type="range" min="100" max="1000" step="50" 
-                 value={localWpm} onChange={(e) => setLocalWpm(Number(e.target.value))}
-                 className="w-32 accent-purple-500"
-               />
-            </div>
-         </div>
-         <div className="text-zinc-500 text-sm font-mono tracking-widest">
-            {isAdhdMode ? "YÜKSEK ODAK MODU AKTİF" : "STANDART MOD"}
-         </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-zinc-500 hover:text-white"
+              onClick={() => {
+                setIsPlaying(false);
+                setCurrentIndex(0);
+                setStartTime(null);
+              }}
+            >
+              <RotateCcw className="w-6 h-6" />
+            </Button>
+          </div>
+
+          {/* İlerleme Çubuğu */}
+          <div className="w-full max-w-md h-1 bg-zinc-800 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-purple-500 transition-all duration-300 ease-linear"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="text-sm text-zinc-500 font-mono">
+            {currentIndex + 1} / {words.length} Kelime
+          </div>
+        </div>
       </div>
     </div>
   );

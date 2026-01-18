@@ -39,10 +39,14 @@ export function CalibrationModal({ userId, onComplete }: CalibrationModalProps) 
   }, [userId]);
 
   const handleTestComplete = async (stats: { wpm: number; duration: number }) => {
-    setWpmResult(stats.wpm);
-    setStep("RESULT");
-    // Arka planda kaydetmeyi dene ama kullanıcıyı bekletme
-    saveProfile(stats.wpm, stats.duration);
+    // setTimeout, React'in "render" işlemini bitirmesine izin verir.
+    // Bu sayede "Cannot update component while rendering" hatası çözülür.
+    setTimeout(() => {
+      setWpmResult(stats.wpm);
+      setStep("RESULT");
+      // Arka planda kaydetmeyi dene
+      saveProfile(stats.wpm, stats.duration);
+    }, 0);
   };
 
   const saveProfile = async (wpm: number, duration: number) => {

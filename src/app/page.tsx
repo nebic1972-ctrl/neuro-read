@@ -135,9 +135,19 @@ function HomeContent() {
     }, 0);
   };
 
-  if (!isLoaded) {
-    return <div className="min-h-screen bg-black flex items-center justify-center text-white">Yükleniyor...</div>;
+  // --- GÜVENLİK KİLİDİ ---
+  // Kullanıcı bilgisi henüz gelmediyse sayfayı çizmeye çalışma, bekle.
+  if (!isLoaded || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-black text-white">
+        <div className="text-center">
+          <h2 className="text-xl font-bold">Nöro-Okuyucu Yükleniyor...</h2>
+          <p className="text-gray-400 text-sm mt-2">Lütfen bekleyin veya sayfayı yenileyin.</p>
+        </div>
+      </div>
+    );
   }
+  // ------------------------
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30">

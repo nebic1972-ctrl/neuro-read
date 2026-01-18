@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Trash2, BookOpen, AlertCircle } from "lucide-react";
+import { Plus, Trash2, BookOpen, Search, Filter, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -15,154 +15,210 @@ interface LibraryManagerProps {
 
 export function LibraryManager({ userId, onSelectBook }: LibraryManagerProps) {
   const [books, setBooks] = useState<any[]>([]);
+  const [filteredBooks, setFilteredBooks] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  
+  // FİLTRELEME & ARAMA STATE'LERİ
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("Tümü");
+  
   const [newBook, setNewBook] = useState({ title: "", content: "", category: "Genel" });
   const [isOpen, setIsOpen] = useState(false);
 
-  // Kitapları Çek (Hem senin hem demo kitapları)
+  // Kategoriler
+  const categories = ["Tümü", "Genel", "Hikaye", "Akademik", "Kurgu Dışı"];
+
   useEffect(() => {
     fetchBooks();
   }, [userId]);
 
+  // Arama veya Kategori değişince listeyi güncelle
+  useEffect(() => {
+    let result = books;
+
+    // 1. Kategori Filtresi
+    if (selectedCategory !== "Tümü") {
+      result = result.filter(book => book.category === selectedCategory);
+    }
+
+    // 2. Arama Filtresi
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(book => 
+        book.title.toLowerCase().includes(q) || 
+        book.content.toLowerCase().includes(q)
+      );
+    }
+
+    setFilteredBooks(result);
+  }, [books, searchQuery, selectedCategory]);
+
   const fetchBooks = async () => {
-    // Demo içerikleri ('demo_content') VE kullanıcının kendi kitaplarını getir
     const { data, error } = await supabase
       .from("user_library")
       .select("*")
       .or(`user_id.eq.${userId},user_id.eq.demo_content`)
       .order("created_at", { ascending: false });
     
-    if (error) console.error("Çekme hatası:", error);
-    if (data) setBooks(data);
+    if (data) {
+      setBooks(data);
+      setFilteredBooks(data); // İlk başta hepsi görünür
+    }
   };
 
   const handleAddBook = async () => {
-    // 1. Doğrulama
     if (!newBook.title.trim() || !newBook.content.trim()) {
-      alert("Lütfen başlık ve metin alanlarını doldurun.");
+      alert("Lütfen başlık ve metin giriniz.");
       return;
     }
-
     setIsUploading(true);
+    const { error } = await supabase.from("user_library").insert([{
+      user_id: userId,
+      title: newBook.title,
+      content: newBook.content,
+      category: newBook.category,
+      words_count: newBook.content.trim().split(/\s+/).length
+    }]);
 
-    try {
-      // 2. Veritabanına Ekle
-      const { data, error } = await supabase.from("user_library").insert([{
-        user_id: userId,
-        title: newBook.title,
-        content: newBook.content,
-        category: newBook.category,
-        words_count: newBook.content.trim().split(/\s+/).length
-      }]).select(); // .select() eklenen veriyi geri döndürür, onay için şarttır
-
-      if (error) throw error;
-
-      // 3. Başarılıysa Temizle ve Listeyi Yenile
-      console.log("Kitap eklendi:", data);
+    if (!error) {
       setNewBook({ title: "", content: "", category: "Genel" });
       setIsOpen(false);
-      fetchBooks(); // Listeyi anında güncelle
-
-    } catch (error: any) {
-      console.error("Ekleme Hatası:", error);
-      alert(`Kitap eklenemedi! Hata: ${error.message || JSON.stringify(error)}`);
-    } finally {
-      setIsUploading(false);
+      fetchBooks();
     }
+    setIsUploading(false);
   };
 
   const handleDelete = async (id: string, e: any) => {
     e.stopPropagation();
-    if(!confirm("Bu kitabı silmek istediğine emin misin?")) return;
-    
-    const { error } = await supabase.from("user_library").delete().eq("id", id);
-    if (error) alert("Silinemedi: " + error.message);
-    else fetchBooks();
+    if(!confirm("Silmek istediğine emin misin?")) return;
+    await supabase.from("user_library").delete().eq("id", id);
+    fetchBooks();
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* ÜST BAR: BAŞLIK + EKLE BUTONU */}
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Kütüphanem</h2>
+        <div>
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-white bg-clip-text text-transparent">Nöro-Kütüphane</h2>
+          <p className="text-zinc-500 text-sm mt-1">Beyin antrenmanınız için kategorize edilmiş içerikler.</p>
+        </div>
         
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-purple-600 hover:bg-purple-700">
-              <Plus className="w-4 h-4 mr-2" /> Yeni Ekle
+            <Button className="bg-white text-black hover:bg-zinc-200 font-bold">
+              <Plus className="w-4 h-4 mr-2" /> İçerik Ekle
             </Button>
           </DialogTrigger>
           <DialogContent className="bg-zinc-950 border-zinc-800 text-white sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>Yeni Metin Ekle</DialogTitle>
+              <DialogTitle>Kütüphaneye Ekle</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-4">
               <Input 
-                placeholder="Başlık (Örn: Günlük Okumam)" 
+                placeholder="Başlık" 
                 className="bg-zinc-900 border-zinc-700"
                 value={newBook.title}
                 onChange={(e) => setNewBook({...newBook, title: e.target.value})}
               />
               <Textarea 
-                placeholder="Metni buraya yapıştır..." 
-                className="bg-zinc-900 border-zinc-700 h-40 resize-none"
+                placeholder="Metni yapıştır..." 
+                className="bg-zinc-900 border-zinc-700 h-32"
                 value={newBook.content}
                 onChange={(e) => setNewBook({...newBook, content: e.target.value})}
               />
               <div className="flex gap-2">
-                {['Genel', 'Akademik', 'Hikaye'].map(cat => (
-                  <div 
+                {['Genel', 'Akademik', 'Hikaye', 'Kurgu Dışı'].map(cat => (
+                  <button 
                     key={cat}
                     onClick={() => setNewBook({...newBook, category: cat})}
-                    className={`px-3 py-1 rounded-full text-xs cursor-pointer border transition ${newBook.category === cat ? 'bg-purple-500 border-purple-500 text-white' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'}`}
+                    className={`px-3 py-1 rounded-full text-xs border transition ${newBook.category === cat ? 'bg-purple-500 border-purple-500 text-white' : 'border-zinc-700 text-zinc-400'}`}
                   >
                     {cat}
-                  </div>
+                  </button>
                 ))}
               </div>
-              <Button onClick={handleAddBook} disabled={isUploading} className="w-full bg-white text-black hover:bg-zinc-200 font-bold">
-                {isUploading ? "Kaydediliyor..." : "Kütüphaneye Ekle"}
+              <Button onClick={handleAddBook} disabled={isUploading} className="w-full bg-white text-black font-bold">
+                {isUploading ? "Kaydediliyor..." : "Kaydet"}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {books.map((book) => (
+      {/* ARAMA VE FİLTRELEME ÇUBUĞU */}
+      <div className="flex flex-col md:flex-row gap-4 items-center bg-zinc-900/50 p-2 rounded-xl border border-zinc-800">
+        <div className="relative w-full md:w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Input 
+            placeholder="Kitap adı veya içerik ara..." 
+            className="pl-9 bg-black/50 border-zinc-800 focus:border-purple-500 h-10"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        
+        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                selectedCategory === cat 
+                  ? "bg-purple-600 text-white shadow-lg shadow-purple-900/20" 
+                  : "bg-black/50 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* KİTAP LİSTESİ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-h-[300px]">
+        {filteredBooks.map((book) => (
           <div 
             key={book.id} 
-            onClick={() => onSelectBook(book)}
-            className="group relative p-6 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:border-purple-500/50 hover:bg-zinc-900 transition cursor-pointer flex flex-col justify-between h-[180px]"
+            className="group relative p-6 bg-zinc-900 border border-zinc-800 rounded-2xl hover:border-purple-500/50 hover:bg-zinc-900/80 transition-all cursor-pointer flex flex-col justify-between"
           >
             <div>
-              <div className="flex justify-between items-start mb-3">
-                <div className={`p-2 rounded-lg ${book.category === 'Akademik' ? 'bg-blue-500/10 text-blue-400' : book.category === 'Hikaye' ? 'bg-green-500/10 text-green-400' : 'bg-purple-500/10 text-purple-400'}`}>
-                  <BookOpen className="w-5 h-5" />
-                </div>
-                {/* Demo içerik silinemez, sadece kullanıcınınkiler silinir */}
-                {book.user_id !== 'demo_content' && (
-                  <button 
-                    onClick={(e) => handleDelete(book.id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-500/10 hover:text-red-400 rounded-full transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
+              <div className="flex justify-between items-start mb-4">
+                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                  book.category === 'Akademik' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
+                  book.category === 'Hikaye' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
+                  'bg-zinc-800 text-zinc-400 border-zinc-700'
+                }`}>
+                  {book.category}
+                </span>
+                <span className="text-xs text-zinc-500 flex items-center gap-1">
+                   <BookOpen className="w-3 h-3"/> {book.words_count}
+                </span>
               </div>
-              <h3 className="font-bold text-lg mb-1 line-clamp-2 text-white">{book.title}</h3>
+              <h3 className="font-bold text-lg text-white mb-2 line-clamp-2 leading-tight">{book.title}</h3>
+              <p className="text-sm text-zinc-500 line-clamp-3">{book.content}</p>
             </div>
             
-            <div className="flex justify-between items-center text-xs font-medium text-zinc-500 mt-4 border-t border-zinc-800/50 pt-3">
-              <span className="bg-zinc-800/50 px-2 py-1 rounded">{book.category}</span>
-              <span>{book.words_count} Kelime</span>
+            <div className="mt-6 flex items-center justify-between pt-4 border-t border-zinc-800/50">
+               <Button onClick={() => onSelectBook(book)} variant="secondary" className="h-8 text-xs font-bold bg-white text-black hover:bg-zinc-200">
+                  Okumaya Başla
+               </Button>
+               {book.user_id !== 'demo_content' && (
+                  <button onClick={(e) => handleDelete(book.id, e)} className="text-zinc-600 hover:text-red-500 transition p-2">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+               )}
             </div>
           </div>
         ))}
         
-        {books.length === 0 && (
-          <div className="col-span-full py-16 flex flex-col items-center justify-center text-zinc-500 border-2 border-dashed border-zinc-800 rounded-2xl bg-zinc-900/20">
-            <AlertCircle className="w-10 h-10 mb-4 opacity-50"/>
-            <p>Kütüphanen boş. Yeni bir metin ekle!</p>
+        {filteredBooks.length === 0 && (
+          <div className="col-span-full flex flex-col items-center justify-center py-20 text-zinc-500 bg-zinc-900/20 rounded-2xl border border-dashed border-zinc-800">
+             <Search className="w-10 h-10 mb-4 opacity-20"/>
+             <p>Aradığınız kriterlere uygun içerik bulunamadı.</p>
+             <Button variant="link" onClick={() => {setSearchQuery(""); setSelectedCategory("Tümü")}} className="text-purple-400">
+                Filtreleri Temizle
+             </Button>
           </div>
         )}
       </div>

@@ -15,6 +15,7 @@ import { RSVPReader } from "@/components/RSVPReader";
 import { CalibrationModal } from "@/components/CalibrationModal"; 
 import { DisclaimerModal } from "@/components/DisclaimerModal";
 import { LibraryManager } from "@/components/LibraryManager";
+import { QuizModal } from "@/components/QuizModal";
 import { Scoreboard } from "@/components/Scoreboard";
 import Link from "next/link";
 
@@ -23,6 +24,8 @@ function HomeContent() {
   
   // Modalı kontrol eden değişken (Varsayılan: Kapalı)
   const [showCalibration, setShowCalibration] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [lastReadBook, setLastReadBook] = useState("");
 
   const [readingState, setReadingState] = useState<{
     isActive: boolean;
@@ -74,6 +77,7 @@ function HomeContent() {
   }, [user, isLoaded]);
 
   const handleBookSelect = (book: any) => {
+    setLastReadBook(book.title); // Quiz için başlığı kaydet
     setReadingState({ isActive: true, content: book.content, wpm: 300, bookId: book.id });
   };
 
@@ -98,6 +102,13 @@ function HomeContent() {
           onComplete={handleCalibrationComplete} 
         />
       )}
+
+      {showQuiz && (
+        <QuizModal 
+          bookTitle={lastReadBook} 
+          onClose={() => setShowQuiz(false)} 
+        />
+      )}
       
       {/* Yasal Uyarıyı Şimdilik Kapalı Tutuyoruz */}
       {/* <DisclaimerModal onAccept={() => {}} /> */}
@@ -107,7 +118,10 @@ function HomeContent() {
           content={readingState.content}
           wpm={readingState.wpm}
           onClose={() => setReadingState({...readingState, isActive: false})}
-          onComplete={() => setReadingState({...readingState, isActive: false})}
+          onComplete={() => {
+            setReadingState({...readingState, isActive: false});
+            setShowQuiz(true); // OKUMA BİTTİ, QUİZİ AÇ!
+          }}
         />
       )}
 

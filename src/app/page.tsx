@@ -137,16 +137,16 @@ function HomeContent() {
                <LibraryManager userId={user.id} onSelectBook={handleBookSelect} />
             </div>
           </div>
-          {/* SAĞ PANEL - GÜNCEL HALİ */}
+          {/* SAĞ PANEL - SKOR TABLOSU */}
           <div className="lg:col-span-4 space-y-6">
-             {/* 1. Liderlik Tablosu */}
              <Scoreboard />
 
-             {/* 2. Kütüphane Kısayolu (Opsiyonel, zaten solda var ama kalsın) */}
-             <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
-                <Link href="/library" className="block w-full text-center p-4 rounded-lg bg-white text-black font-bold hover:bg-zinc-200 transition">
-                   📚 Tüm Arşivi Gör
-                </Link>
+             <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 text-center">
+                <h3 className="text-zinc-400 text-sm mb-2">Günlük Hedef</h3>
+                <div className="text-2xl font-bold text-white mb-2">500 Kelime</div>
+                <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                   <div className="h-full bg-green-500 w-[10%]"></div>
+                </div>
              </div>
           </div>
         </div>

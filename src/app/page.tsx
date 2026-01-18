@@ -114,8 +114,8 @@ function HomeContent() {
               .from("user_profiles")
               .update({
                 total_words_read: newTotalWords,
-                total_reading_time_sec: newTotalTime,
-                last_seen_at: new Date().toISOString()
+                total_reading_time_sec: newTotalTime
+                // Tarih satırını sildik, artık hata veremez!
               })
               .eq("user_id", user?.id);
 

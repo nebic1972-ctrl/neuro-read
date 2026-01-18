@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { PDFUploader } from "./PDFUploader";
 
 interface LibraryManagerProps {
   userId: string;
@@ -95,6 +96,26 @@ export function LibraryManager({ userId, onSelectBook }: LibraryManagerProps) {
     fetchBooks();
   };
 
+  // PDF Yüklendiğinde çalışacak fonksiyon
+  const handlePDFUpload = async (text: string, title: string) => {
+    setIsUploading(true);
+    // Doğrudan veritabanına kaydet
+    const { error } = await supabase.from("user_library").insert([{
+        user_id: userId,
+        title: title,
+        content: text,
+        category: "Kurgu Dışı", // PDF'leri varsayılan bu kategoriye atalım
+        words_count: text.split(/\s+/).length
+    }]);
+
+    if (!error) {
+        fetchBooks(); // Listeyi yenile
+    } else {
+        alert("PDF kaydedilemedi: " + error.message);
+    }
+    setIsUploading(false);
+  };
+
   return (
     <div className="space-y-8">
       {/* ÜST BAR: BAŞLIK + EKLE BUTONU */}
@@ -104,13 +125,15 @@ export function LibraryManager({ userId, onSelectBook }: LibraryManagerProps) {
           <p className="text-zinc-500 text-sm mt-1">Beyin antrenmanınız için kategorize edilmiş içerikler.</p>
         </div>
         
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-white text-black hover:bg-zinc-200 font-bold">
-              <Plus className="w-4 h-4 mr-2" /> İçerik Ekle
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-zinc-950 border-zinc-800 text-white sm:max-w-[500px]">
+        <div className="flex gap-2">
+          <PDFUploader onTextExtracted={handlePDFUpload} />
+          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-white text-black hover:bg-zinc-200 font-bold">
+                <Plus className="w-4 h-4 mr-2" /> İçerik Ekle
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-zinc-950 border-zinc-800 text-white sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Kütüphaneye Ekle</DialogTitle>
               <DialogDescription className="text-zinc-400">
@@ -146,7 +169,8 @@ export function LibraryManager({ userId, onSelectBook }: LibraryManagerProps) {
               </Button>
             </div>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       {/* ARAMA VE FİLTRELEME ÇUBUĞU */}

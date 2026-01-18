@@ -1,5 +1,5 @@
 import { ClerkProvider } from "@clerk/nextjs";
-import "./globals.css"; // <--- İŞTE SİHİRLİ SATIR BU!
+import "./globals.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 

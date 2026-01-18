@@ -1,330 +1,289 @@
 "use client";
 
-import { RSVPReader } from "@/components/RSVPReader"; 
-import { FileUploader } from "@/components/FileUploader";
-import { CameraOCR } from "@/components/CameraOCR";
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { 
-  Play, Pause, RotateCcw, Edit2, TrendingUp, BrainCircuit, Keyboard, User, Trophy
-} from "lucide-react";
-import { useReadingStore } from "./useReadingStore";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { SignInButton, SignedIn, SignedOut, UserButton, useUser } from '@clerk/nextjs'
-import { supabase } from "@/lib/supabase"; 
+import { BookOpen, Trophy, BrainCircuit, Eye, Activity, Play } from "lucide-react";
+import Link from "next/link";
+
+// Bileşenler
+import { RSVPReader } from "@/components/RSVPReader";
+import { FileUploader } from "@/components/FileUploader";
+import { Leaderboard } from "@/components/Leaderboard";
+import { ReadingStats } from "@/components/ReadingStats"; // Yeni grafik
+import { DiagnosticTest } from "@/components/DiagnosticTest"; // Yeni test
+import { TextPreview } from "@/components/TextPreview"; // Önizleme ekranı
+import { SessionResult } from "@/components/SessionResult"; // Sonuç ekranı
+import { UserProgress } from "@/components/UserProgress"; // İlerleme çubuğu
+import { DisclaimerModal } from "@/components/DisclaimerModal"; // Yasal uyarı
 
 export default function HomePage() {
   const { user } = useUser();
-  const { 
-    wpm, fontSize, content, history, 
-    setWpm, setFontSize, setContent, addHistoryEntry 
-  } = useReadingStore();
+  const searchParams = useSearchParams();
+  const bookId = searchParams.get("id");
 
-  const [state, setState] = useState<'idle' | 'reading' | 'paused' | 'completed'>('idle');
-  const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [tempText, setTempText] = useState("");
-  const [leaderboard, setLeaderboard] = useState<any[]>([]); 
-  const [isRSVPMode, setIsRSVPMode] = useState(false);
-  const wordContainerRef = useRef<HTMLDivElement>(null);
-  const words = content.split(/[\s\n]+/).filter(w => w.length > 0);
+  const [mounted, setMounted] = useState(false);
+  const [text, setText] = useState("");
+  const [isReading, setIsReading] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false); // Okuma öncesi mod
+  const [sessionData, setSessionData] = useState<any>(null); // Sonuç ekranı için veri
+  const [loadingBook, setLoadingBook] = useState(false);
+  const [statsTrigger, setStatsTrigger] = useState(0);
 
-  // --- LİDERLİK TABLOSUNU ÇEK ---
-  const fetchLeaderboard = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('readings')
-      .select('username, wpm, created_at')
-      .order('wpm', { ascending: false })
-      .limit(10);
-    
-    if (data) setLeaderboard(data);
-    if (error) console.error("Liderlik tablosu hatası:", error);
+  // --- KULLANICI PROFİL STATE'LERİ ---
+  const [needsTest, setNeedsTest] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [recommendedBook, setRecommendedBook] = useState<any>(null); // Önerilen kitap
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
+  // 1. Kullanıcı Profilini ve Önerilen Kitabı Çek
   useEffect(() => {
-    fetchLeaderboard();
-  }, [fetchLeaderboard]);
+    const initSystem = async () => {
+      if (!user) return;
+      
+      // A) Profili Al
+      const { data: profile, error } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
 
-  // --- KLAVYE ---
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isDialogOpen) return;
-      switch (e.key) {
-        case " ": e.preventDefault(); setState(prev => (prev === 'reading' ? 'paused' : 'reading')); break;
-        case "ArrowUp": e.preventDefault(); setWpm(Math.min(1000, wpm + 10)); break;
-        case "ArrowDown": e.preventDefault(); setWpm(Math.max(50, wpm - 10)); break;
-        case "ArrowLeft": e.preventDefault(); setCurrentWordIndex(prev => Math.max(0, prev - 5)); break;
-        case "ArrowRight": e.preventDefault(); setCurrentWordIndex(prev => Math.min(words.length - 1, prev + 5)); break;
+      if (error || !profile) {
+        setNeedsTest(true);
+      } else {
+        setUserProfile(profile);
+        setNeedsTest(false);
+
+        // B) PROFİLE GÖRE KİTAP ÖNER (YENİ KISIM 🧠)
+        let targetDifficulty = 1;
+        
+        // Eğitim ve Ustalığa göre zorluk belirle
+        if (profile.education_level === 'akademik' || profile.mastery_level === 'genius') targetDifficulty = 5;
+        else if (profile.education_level === 'lisans' || profile.mastery_level === 'elite') targetDifficulty = 3;
+        else targetDifficulty = 1;
+
+        // Veritabanından uygun kitabı bul
+        const { data: book } = await supabase
+            .from("library")
+            .select("*")
+            .lte('difficulty_level', targetDifficulty) // Kullanıcının seviyesine eşit veya altı
+            .order('difficulty_level', { ascending: false }) // En zorunu (kullanıcıya en yakınını) getir
+            .limit(1)
+            .single();
+        
+        if (book) setRecommendedBook(book);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isDialogOpen, wpm, words.length, setWpm]);
+    
+    if (mounted) initSystem();
+  }, [user, mounted, statsTrigger]); // Test bitince (statsTrigger) profili tekrar çek
 
-  // --- HIZ MOTORU ---
+  // 2. Kütüphaneden Kitap Yükleme (Varsa)
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (state === 'reading' && currentWordIndex < words.length) {
-      const currentWord = words[currentWordIndex];
-      const baseDelay = 60000 / wpm;
-      let delay = baseDelay;
-      if (/[.?!]$/.test(currentWord)) delay = baseDelay * 3.5; 
-      else if (/[,:;]$/.test(currentWord)) delay = baseDelay * 2.0;
-      else if (/[-"]$/.test(currentWord)) delay = baseDelay * 1.5;
-      if (currentWord.length > 10) delay = delay * 1.3;
-
-      timer = setTimeout(() => {
-        setCurrentWordIndex((prev) => {
-          if (prev >= words.length - 1) return prev;
-          return prev + 1;
-        });
-      }, delay);
+    if (bookId) {
+      const loadBook = async () => {
+        setLoadingBook(true);
+        const { data } = await supabase.from("library").select("content").eq("id", bookId).single();
+        if (data) {
+          setText(data.content);
+          setIsPreviewing(true); // Önce önizleme göster
+        }
+        setLoadingBook(false);
+      };
+      loadBook();
     }
-    return () => clearTimeout(timer);
-  }, [state, wpm, currentWordIndex, words]);
+  }, [bookId]);
 
-  // --- KAYIT MEKANİZMASI ---
-  useEffect(() => {
-    if (state === 'reading' && currentWordIndex >= words.length - 1 && words.length > 0) {
-      const timer = setTimeout(async () => {
-         setState('completed');
-         addHistoryEntry(wpm);
-         
-         if (user) {
-            console.log("Skor kaydediliyor...");
-            await supabase.from('readings').insert({
-                user_id: user.id,
-                username: user.fullName || user.firstName || 'Anonim Pilot',
-                wpm: wpm
-            });
-            console.log("Kaydedildi!");
-            fetchLeaderboard(); 
-         }
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [currentWordIndex, state, words.length, wpm, addHistoryEntry, user, fetchLeaderboard]);
+  const handleSessionComplete = (stats: { wpm: number; duration: number; quizScore: number }) => {
+    setIsReading(false);
+    
+    const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+    
+    // 🛡️ GÜVENLİK FİLTRESİ: 
+    // Eğer kelime sayısı 5'ten azsa (boş metin hatası) sonuç ekranını açma.
+    if (wordCount < 5) return; 
 
-  const handleReset = () => { setState('idle'); setCurrentWordIndex(0); };
-  const handleOpenEdit = () => { setTempText(content); setIsDialogOpen(true); if (state === 'reading') setState('paused'); };
-  const handleSaveText = () => { if (tempText.trim().length > 0) { setContent(tempText); handleReset(); setIsDialogOpen(false); } };
-
-  const renderHighlightedWord = (word: string) => {
-    if (!word) return null;
-    if (word.length < 2) return <span className="text-foreground">{word}</span>;
-    const rawCenterIndex = Math.floor(word.length / 2);
-    const start = word.slice(0, rawCenterIndex);
-    const middle = word[rawCenterIndex];
-    const end = word.slice(rawCenterIndex + 1);
-    return (
-      <>
-        <span className="text-slate-300 opacity-80">{start}</span>
-        <span className="text-red-500 font-extrabold mx-[0.5px] drop-shadow-[0_0_15px_rgba(239,68,68,1)] scale-125 inline-block">{middle}</span>
-        <span className="text-slate-300 opacity-80">{end}</span>
-      </>
-    );
+    setSessionData({
+      wpm: stats.wpm,
+      wordCount: wordCount,
+      durationSeconds: stats.duration,
+      quizScore: stats.quizScore // ✅ Quiz skoru eklendi
+    });
   };
 
+  // Hydration Shield
+  if (!mounted) return <div className="min-h-screen bg-black flex items-center justify-center text-zinc-500 font-mono">Nöro-Sistem Yükleniyor...</div>;
+
   return (
-    <main className="min-h-screen bg-black text-foreground p-4 md:p-8 font-sans select-none">
-      <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* HEADER */}
-        <div className="flex justify-between items-center mb-8 px-2">
-           <div className="flex items-center gap-3">
-             <BrainCircuit className="w-8 h-8 text-red-600 animate-pulse" />
-             <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow-sm">Neuro-Read</h1>
-           </div>
-           <div className="flex items-center gap-4">
-              <SignedOut>
-              <SignInButton mode="modal">
-  {/* Button yerine div yaptık ama tipini button gibi gösterdik */}
-  <div className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-red-600 text-red-500 hover:bg-red-600 hover:text-white h-10 px-4 py-2 cursor-pointer">
-    <User className="w-4 h-4 mr-2"/> Giriş Yap
-  </div>
-</SignInButton>
-              </SignedOut>
-              <SignedIn>
-                <div className="flex items-center gap-2">
-                   <span className="text-sm text-slate-400 hidden sm:inline">Hoş geldin, Pilot</span>
-                   <UserButton afterSignOutUrl="/" />
-                </div>
-              </SignedIn>
-           </div>
+    <main className="min-h-screen bg-black text-white p-4 relative">
+      
+      {/* YASAL KORUMA KALKANI - En üstte çalışır */}
+      <DisclaimerModal onAccept={() => console.log("Yasal metin kabul edildi.")} />
+      
+      {/* --- SONUÇ EKRANI (EN ÜSTTE - MODAL) --- */}
+      {sessionData && (
+        <SessionResult 
+          wpm={sessionData.wpm}
+          wordCount={sessionData.wordCount}
+          durationSeconds={sessionData.durationSeconds}
+          quizScore={sessionData.quizScore}
+          onClose={() => { 
+            setSessionData(null); // Sonuç ekranını kapat
+            setStatsTrigger(prev => prev + 1); // Grafikleri güncelle
+          }}
+        />
+      )}
+
+      {/* --- TEŞHİS TESTİ MODALI --- */}
+      {needsTest && (
+        <DiagnosticTest onComplete={() => { setNeedsTest(false); setStatsTrigger(prev => prev+1); }} />
+      )}
+
+      {/* --- HEADER & PROFİL ÖZETİ --- */}
+      <header className="max-w-6xl mx-auto flex justify-between items-center py-6 mb-8 border-b border-zinc-800">
+        <div className="flex items-center gap-2">
+            <BrainCircuit className="w-8 h-8 text-purple-500" />
+            <h1 className="text-2xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-500">
+              Neuro-Read <span className="text-xs text-zinc-600 font-mono">v1.2</span>
+            </h1>
         </div>
 
-        {/* DOSYA YÜKLEME ALANI */}
-        <div className="max-w-4xl mx-auto w-full mb-6">
-            <FileUploader onTextLoaded={(text) => {
-                // 1. Metni kutuya yaz
-                setTempText(text);
-                
-                // 2. Metni sisteme kaydet (Otomatik "Kaydet" butonu etkisi)
-                setContent(text);
-                
-                // 3. Kullanıcıya haber ver (Tarayıcı uyarısı)
-                alert("Dosya başarıyla okundu ve sisteme yüklendi! Hazır olunca BAŞLAT'a bas.");
-            }} />
-        </div>
-
-        {/* KAMERA / OCR ALANI */}
-        <div className="max-w-4xl mx-auto w-full mb-8">
-            <CameraOCR onTextLoaded={(text) => {
-                setTempText(text);
-                setContent(text); // Otomatik kaydet
-                alert("Görüntü metne çevrildi! Hazırsan BAŞLAT'a bas.");
-            }} />
-        </div>
-
-        {/* KONTROLLER */}
-        <Card className="p-6 border-slate-800 bg-slate-900/50 backdrop-blur-md shadow-xl">
-          <div className="flex flex-col gap-6">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-slate-400">Hedef Hız</span>
-                <span className="text-2xl font-bold text-white">{wpm} <span className="text-xs text-slate-500 font-normal">WPM</span></span>
-              </div>
-              <Button variant="outline" onClick={handleOpenEdit} className="bg-transparent border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
-                <Edit2 className="mr-2 h-4 w-4" /> Metni Düzenle
-              </Button>
-            </div>
-            {/* RSVP BUTONU */}
-            <div className="flex justify-center mt-6 mb-2">
-                <Button 
-                    onClick={() => setIsRSVPMode(true)}
-                    className="bg-zinc-900 border border-red-900/50 hover:border-red-500 text-red-500 hover:text-white hover:bg-red-600/10 transition-all duration-300 w-full max-w-md py-6 text-lg font-mono tracking-widest uppercase"
-                >
-                    ⚡ RSVP Modunu Başlat ⚡
-                </Button>
-            </div>
-            <div className="space-y-4">
-              <Slider value={[wpm]} onValueChange={(v) => setWpm(v[0])} min={100} max={1000} step={10} />
-              <div className="flex justify-between items-center pt-2">
-                 <span className="text-sm text-slate-400">Yazı Boyutu: {fontSize}px</span>
-                 <div className="w-1/2">
-                    <Slider value={[fontSize]} onValueChange={(v) => setFontSize(v[0])} min={20} max={96} step={2} />
-                 </div>
-              </div>
-            </div>
-            <div className="flex justify-center gap-4 pt-4">
-              <Button size="lg" className="rounded-full px-10 py-7 text-xl bg-white text-black hover:bg-slate-200 transition-all duration-300 active:scale-95 shadow-[0_0_20px_rgba(255,255,255,0.2)]" onClick={() => setState(state === 'reading' ? 'paused' : 'reading')}>
-                {state === 'reading' ? (<><Pause className="mr-2 h-6 w-6" /> Duraklat (Space)</>) : (<><Play className="mr-2 h-6 w-6 fill-current" /> {state === 'paused' ? 'Devam Et' : 'Başlat'} (Space)</>)}
-              </Button>
-              {(state === 'paused' || state === 'completed') && (
-                <Button variant="outline" size="icon" onClick={handleReset} className="rounded-full h-16 w-16 border-slate-700 hover:bg-slate-800 text-slate-300">
-                  <RotateCcw className="h-6 w-6" />
-                </Button>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        {/* EKRAN */}
-        <Card className="min-h-[350px] flex items-center justify-center border-slate-800 bg-black shadow-[inset_0_0_50px_rgba(0,0,0,1)] p-8 relative overflow-hidden rounded-2xl">
-           <div className="absolute top-0 bottom-0 left-1/2 w-[2px] bg-red-600/60 transform -translate-x-1/2 pointer-events-none z-0 shadow-[0_0_15px_rgba(220,38,38,0.5)]"></div>
-           <div className="absolute left-0 right-0 top-1/2 h-[2px] bg-red-600/60 transform -translate-y-1/2 pointer-events-none z-0 shadow-[0_0_15px_rgba(220,38,38,0.5)]"></div>
-           {state === 'idle' ? (
-             <div className="text-center space-y-4 z-10 relative">
-                <p className="text-slate-400 text-2xl font-light tracking-wide">Hazır</p>
-                <p className="text-sm text-red-500 uppercase tracking-widest font-bold animate-pulse">Boşluk Tuşuna Bas</p>
-             </div>
-           ) : state === 'completed' ? (
-             <div className="text-center space-y-5 z-10 relative">
-                <p className="text-white text-3xl font-bold tracking-tight">Tamamlandı</p>
-                <p className="text-green-500 text-sm">Skorun Liderlik Tablosuna Eklendi!</p>
-                <Button variant="outline" onClick={handleReset} className="mt-4 border-slate-700 text-white hover:bg-slate-800">Başa Dön</Button>
-             </div>
-           ) : (
-             <div className="z-20 text-center w-full relative flex justify-center items-center" ref={wordContainerRef} style={{ height: `${fontSize * 1.5}px` }}>
-               <span className="font-bold whitespace-nowrap leading-none select-none flex items-center justify-center" style={{ fontSize: `${fontSize}px` }}>{words.length > 0 && renderHighlightedWord(words[currentWordIndex])}</span>
-             </div>
-           )}
-           {state !== 'idle' && words.length > 0 && (
-             <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-900 z-30">
-               <div className="h-full bg-gradient-to-r from-red-900 to-red-600 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(220,38,38,0.8)]" style={{ width: `${((currentWordIndex + 1) / words.length) * 100}%` }}></div>
-             </div>
-           )}
-        </Card>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* GRAFİK */}
-            <Card className="p-6 border-slate-800 bg-slate-900/50 backdrop-blur-md shadow-lg">
-                <div className="flex items-center gap-2 mb-4">
-                    <TrendingUp className="h-5 w-5 text-white" />
-                    <h3 className="font-semibold text-slate-200">Senin İstatistiğin</h3>
+        {userProfile && (
+            <div className="flex items-center gap-4">
+                {/* Ustalık Rozeti */}
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-700">
+                    <Trophy className={`w-4 h-4 ${userProfile.mastery_level === 'genius' ? 'text-yellow-400' : 'text-purple-400'}`} />
+                    <span className="text-xs font-bold uppercase text-zinc-300">
+                        {userProfile.mastery_level || "NOVICE"}
+                    </span>
                 </div>
-                <div className="h-[200px] w-full">
-                    {history.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={history}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} vertical={false} />
-                                <XAxis dataKey="date" hide />
-                                <YAxis stroke="#64748b" fontSize={12} domain={['dataMin - 50', 'dataMax + 50']} tickLine={false} axisLine={false} />
-                                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }} itemStyle={{ color: '#e2e8f0' }} />
-                                <Line type="monotone" dataKey="wpm" stroke="#ef4444" strokeWidth={3} dot={{ fill: '#ef4444', r: 4, strokeWidth: 0 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div className="h-full flex items-center justify-center text-slate-500 text-sm italic">Veri bekleniyor...</div>
-                    )}
-                </div>
-            </Card>
 
-            {/* LİDERLİK TABLOSU (BURASI EKSİK KALMIŞTI, ŞİMDİ TAMAM) */}
-            <Card className="p-6 border-slate-800 bg-slate-900/50 backdrop-blur-md shadow-lg">
-                <div className="flex items-center gap-2 mb-4">
-                    <Trophy className="h-5 w-5 text-yellow-500" />
-                    <h3 className="font-semibold text-slate-200">Liderlik Tablosu (Top 10)</h3>
+                {/* Hız Limiti Göstergesi */}
+                <div className="hidden md:flex flex-col items-end">
+                    <span className="text-[10px] text-zinc-500 uppercase">Güvenli Hız</span>
+                    <span className="text-sm font-mono font-bold text-green-400">{userProfile.base_wpm || 200} WPM</span>
                 </div>
-                <div className="space-y-3">
-                    {leaderboard.length === 0 ? (
-                        <div className="text-sm text-slate-500 italic text-center py-10">Henüz skor yok. İlk sen ol!</div>
-                    ) : (
-                        leaderboard.map((entry, i) => (
-                            <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-black/40 border border-slate-800/50 hover:border-red-900/30 transition-colors">
-                                <div className="flex items-center gap-3">
-                                    <span className={`text-sm font-bold w-6 text-center ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-amber-700' : 'text-slate-600'}`}>
-                                        #{i + 1}
-                                    </span>
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-medium text-slate-200">{entry.username || 'Gizli Pilot'}</span>
-                                        <span className="text-[10px] text-slate-500">{new Date(entry.created_at).toLocaleDateString()}</span>
-                                    </div>
-                                </div>
-                                <span className="text-lg font-bold text-red-500">{entry.wpm} <span className="text-[10px] text-slate-500 font-normal">WPM</span></span>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </Card>
-        </div>
 
-        {/* MODAL */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="bg-slate-900 border-slate-800 text-slate-100 sm:max-w-[600px]">
-            <DialogHeader><DialogTitle>Metni Düzenle</DialogTitle></DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2"><Label htmlFor="content">Okunacak Metin</Label><Textarea id="content" className="min-h-[200px] bg-black/50 border-slate-700 text-slate-100 resize-y" value={tempText} onChange={(e) => setTempText(e.target.value)} placeholder="Metnini buraya yapıştır..." /></div>
+                {/* Görsel/Yüksek Odak Uyarıları */}
+                {(userProfile.visual_condition !== 'saglikli' || userProfile.adhd_mode_active) && (
+                    <div className="p-2 bg-blue-500/10 rounded-full border border-blue-500/20" title="Adaptif Görsel Mod Aktif">
+                        <Eye className="w-4 h-4 text-blue-400" />
+                    </div>
+                )}
+
+                <Link href="/library">
+                    <Button variant="outline" className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10 gap-2">
+                        <BookOpen className="w-4 h-4" /> Kütüphane
+                    </Button>
+                </Link>
             </div>
-            <DialogFooter><Button variant="outline" onClick={() => setIsDialogOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800">İptal</Button><Button onClick={handleSaveText} className="bg-white text-black hover:bg-slate-200">Kaydet</Button></DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* RSVP MODAL */}
-        {isRSVPMode && (
-            <RSVPReader 
-                content={tempText} 
-                wpm={wpm}
-                onClose={() => setIsRSVPMode(false)}
-                onComplete={() => setIsRSVPMode(false)}
-            />
         )}
-      </div>
+      </header>
+
+      {/* --- ANA İÇERİK --- */}
+      {loadingBook ? (
+        <div className="flex flex-col items-center justify-center h-64 animate-pulse">
+           <Activity className="w-10 h-10 text-purple-500 mb-4" />
+           <p className="text-zinc-500 font-mono">Sinaptik Veri Yükleniyor...</p>
+        </div>
+      ) : isReading ? (
+        // Okuyucuya Kullanıcı Ayarlarını Gönderiyoruz
+        <RSVPReader 
+           content={text} 
+           wpm={userProfile?.base_wpm || 300}
+           isAdhdMode={userProfile?.adhd_mode_active}
+           onClose={() => setIsReading(false)} 
+           onComplete={handleSessionComplete}
+        />
+      ) : isPreviewing ? (
+        // Önizleme Modunda
+        <TextPreview 
+          content={text} 
+          userWpm={userProfile?.base_wpm || 250}
+          onStart={() => { 
+              setSessionData(null); // 🛡️ GEÇMİŞ KARNEYİ SİL
+              setIsPreviewing(false); 
+              setIsReading(true); 
+          }} 
+          onCancel={() => setIsPreviewing(false)} 
+        />
+      ) : (
+        <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4">
+          
+          {/* İLERLEME VE SEVİYE ÇUBUĞU */}
+          {userProfile && (
+             <UserProgress 
+                currentWpm={userProfile.base_wpm || 200} 
+                masteryLevel={userProfile.mastery_level || 'novice'} 
+             />
+          )}
+          
+          {/* Dosya Yükleyici */}
+          <FileUploader onTextLoaded={(t) => { setText(t); setIsPreviewing(true); }} />
+          
+          {/* GÜNLÜK AKILLI ÖNERİ KARTI */}
+          {recommendedBook && (
+              <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-zinc-800 p-6 rounded-xl flex justify-between items-center animate-in slide-in-from-left">
+                  <div>
+                      <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded">
+                              Sizin İçin Seçildi
+                          </span>
+                          <span className="text-[10px] text-zinc-500">
+                              ({userProfile?.education_level?.toUpperCase()} Seviyesi)
+                          </span>
+                      </div>
+                      <h3 className="text-xl font-bold text-white">{recommendedBook.title || "İsimsiz Metin"}</h3>
+                      <p className="text-sm text-zinc-400 line-clamp-1">{recommendedBook.content.substring(0, 80)}...</p>
+                  </div>
+                  
+                  <Button 
+                      onClick={() => { setText(recommendedBook.content); setIsPreviewing(true); }}
+                      className="bg-white text-black hover:bg-zinc-200 font-bold"
+                  >
+                      Hemen Oku <Play className="w-4 h-4 ml-2" />
+                  </Button>
+              </div>
+          )}
+          
+          {/* Dashboard Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+             {/* Grafik - Sol Geniş Alan */}
+             <div className="lg:col-span-2 h-80">
+                <ReadingStats refreshTrigger={statsTrigger} />
+             </div>
+             
+             {/* Liderlik Tablosu - Sağ Dar Alan */}
+             <div className="h-80">
+                <Leaderboard />
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- FOOTER --- */}
+      <footer className="border-t border-zinc-900 mt-20 py-10 text-center">
+        <div className="max-w-4xl mx-auto px-6">
+          <p className="text-zinc-600 text-xs leading-relaxed">
+            <strong>YASAL UYARI:</strong> Bu uygulama bir tıbbi cihaz değildir ve tıbbi tavsiye vermez. 
+            Sunulan içerikler ve egzersizler sadece eğitim ve kişisel gelişim amaçlıdır. 
+            Göz sağlığı veya nörolojik durumlarla ilgili endişeleriniz için lütfen bir uzmana danışın.
+          </p>
+          <div className="flex justify-center gap-6 mt-4 text-[10px] text-zinc-500 font-mono uppercase tracking-widest">
+            <span>Gizlilik Politikası</span>
+            <span>Kullanım Koşulları</span>
+            <span>KVKK Aydınlatma Metni</span>
+          </div>
+          <p className="text-zinc-700 text-[10px] mt-4">
+            © {new Date().getFullYear()} Neuro-Read Platform. Tüm Hakları Saklıdır.
+          </p>
+        </div>
+      </footer>
     </main>
   );
 }

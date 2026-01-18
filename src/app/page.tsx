@@ -13,13 +13,11 @@ import { CalibrationModal } from "@/components/CalibrationModal";
 import { DisclaimerModal } from "@/components/DisclaimerModal";
 import Link from "next/link";
 
-// --- İÇERİK BİLEŞENİ (LOGIC BURADA) ---
+// --- İÇERİK MANTIĞI ---
 function HomeContent() {
+  // 1. HOOK'LAR EN BAŞTA (SIRALAMA ÖNEMLİ)
   const { user, isLoaded } = useUser();
   
-  // Eğer kullanıcı yüklenmediyse boş dön (Hata önleyici)
-  if (!isLoaded) return <div className="min-h-screen bg-black text-white p-8">Yükleniyor...</div>;
-
   const [readingState, setReadingState] = useState<{
     isActive: boolean;
     content: string;
@@ -34,18 +32,18 @@ function HomeContent() {
     level: "NOVICE"
   });
 
-  // Profil verisini çek veya oluştur
+  // 2. PROFİL YÜKLEME
   useEffect(() => {
-    const initProfile = async () => {
+    async function loadProfile() {
       if (!user) return;
 
       try {
-        // 1. Önce profili bulmaya çalış
+        // Profil var mı kontrol et
         const { data, error } = await supabase
           .from("user_profiles")
           .select("*")
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
 
         if (data) {
           setStats({
@@ -55,128 +53,83 @@ function HomeContent() {
             level: data.mastery_level || "NOVICE"
           });
         } else {
-          // 2. Profil yoksa sessizce oluştur (Insert)
-          console.log("Profil bulunamadı, yeni oluşturuluyor...");
+          // Yoksa oluştur
           const { error: insertError } = await supabase
             .from("user_profiles")
             .insert([{ 
                 user_id: user.id,
                 email: user.primaryEmailAddress?.emailAddress,
-                total_words_read: 0,
                 mastery_level: "NOVICE"
             }]);
-            
-          if (insertError) console.error("Profil oluşturma hatası:", insertError);
         }
       } catch (err) {
-        console.error("Kritik profil hatası:", err);
+        console.error("Profil yükleme hatası:", err);
       }
-    };
+    }
 
-    initProfile();
-  }, [user]);
+    if (isLoaded && user) {
+      loadProfile();
+    }
+  }, [user, isLoaded]);
+
+  // 3. YÜKLENİYOR EKRANI (Hook'lardan SONRA olmalı)
+  if (!isLoaded) {
+    return <div className="min-h-screen bg-black flex items-center justify-center text-white">Sistem Yükleniyor...</div>;
+  }
 
   const handleBookSelect = (book: any) => {
-    setReadingState({
-      isActive: true,
-      content: book.content,
-      wpm: 300,
-      bookId: book.id
-    });
+    setReadingState({ isActive: true, content: book.content, wpm: 300, bookId: book.id });
   };
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30">
-      
-      {/* MODALLAR */}
       {user && <CalibrationModal userId={user.id} onComplete={() => window.location.reload()} />}
       <DisclaimerModal onAccept={() => {}} />
 
-      {/* OKUMA MODU */}
       {readingState.isActive && (
         <RSVPReader 
           content={readingState.content}
           wpm={readingState.wpm}
           onClose={() => setReadingState({...readingState, isActive: false})}
-          onComplete={(sessionStats) => {
-             console.log("Seans bitti:", sessionStats);
-             setReadingState({...readingState, isActive: false});
-          }}
+          onComplete={(sessionStats) => setReadingState({...readingState, isActive: false})}
         />
       )}
 
-      {/* NAVBAR */}
       <nav className="border-b border-zinc-900 bg-black/50 backdrop-blur-xl fixed w-full z-40 top-0">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Brain className="w-8 h-8 text-purple-500" />
-            <span className="text-xl font-bold bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent">
-              Neuro-Read
-            </span>
+            <span className="text-xl font-bold bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent">Neuro-Read</span>
           </div>
-
           <div className="flex items-center gap-6">
             {!user ? (
-              <SignInButton mode="modal">
-                <button className="bg-white text-black px-4 py-2 rounded-lg font-bold hover:bg-zinc-200 transition">
-                  Giriş Yap
-                </button>
-              </SignInButton>
-            ) : (
-              <UserButton afterSignOutUrl="/"/>
-            )}
+              <SignInButton mode="modal"><button className="bg-white text-black px-4 py-2 rounded-lg font-bold">Giriş Yap</button></SignInButton>
+            ) : <UserButton afterSignOutUrl="/"/>}
           </div>
         </div>
       </nav>
 
-      {/* DASHBOARD */}
       <main className="pt-32 pb-20 px-6 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-          
           <div className="lg:col-span-8 space-y-8">
             <div className="grid grid-cols-3 gap-4">
-               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-                  <div className="text-zinc-400 mb-2">Toplam Kelime</div>
-                  <div className="text-3xl font-black text-white">{stats.totalWords}</div>
-               </div>
-               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-                  <div className="text-zinc-400 mb-2">Süre (Dk)</div>
-                  <div className="text-3xl font-black text-white">{stats.totalTime}</div>
-               </div>
-               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-                  <div className="text-zinc-400 mb-2">Seviye</div>
-                  <div className="text-3xl font-black text-white">{stats.level}</div>
-               </div>
+               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800"><div className="text-zinc-400 mb-2">Kelime</div><div className="text-3xl font-black text-white">{stats.totalWords}</div></div>
+               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800"><div className="text-zinc-400 mb-2">Süre</div><div className="text-3xl font-black text-white">{stats.totalTime}</div></div>
+               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800"><div className="text-zinc-400 mb-2">Seviye</div><div className="text-3xl font-black text-white">{stats.level}</div></div>
             </div>
-
             <div className="p-8 rounded-3xl bg-zinc-900 border border-zinc-800">
-               <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold">Kütüphanem</h2>
-                  <Link href="/library" className="text-sm text-purple-400 hover:text-purple-300">Tümünü Gör →</Link>
-               </div>
-               <div onClick={() => handleBookSelect({ id: 'demo', content: 'Bu bir test metnidir.', title: 'Demo' })} 
-                    className="p-6 bg-black/40 rounded-xl border border-zinc-800 hover:border-purple-500 cursor-pointer transition">
-                  <h3 className="font-bold">Hızlı Başlangıç</h3>
-                  <p className="text-zinc-500 text-sm">Sistemi test etmek için tıkla.</p>
-               </div>
+               <h2 className="text-2xl font-bold mb-6">Kütüphanem</h2>
+               <div onClick={() => handleBookSelect({ id: 'demo', content: 'Hızlı okuma deneme metni...', title: 'Demo' })} className="p-6 bg-black/40 rounded-xl border border-zinc-800 hover:border-purple-500 cursor-pointer"><h3 className="font-bold">Hızlı Başlangıç</h3></div>
             </div>
           </div>
-
-          <div className="lg:col-span-4 space-y-6">
-             <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
-                <Link href="/library" className="block w-full text-center p-4 rounded-lg bg-white text-black font-bold hover:bg-zinc-200 transition">
-                   📚 Kütüphaneye Git
-                </Link>
-             </div>
-          </div>
-
+          <div className="lg:col-span-4"><div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800"><Link href="/library" className="block w-full text-center p-4 rounded-lg bg-white text-black font-bold">📚 Kütüphaneye Git</Link></div></div>
         </div>
       </main>
     </div>
   );
 }
 
-// --- ANA EXPORT (VERCEL'İN HATA VERDİĞİ YERİ DÜZELTEN KISIM) ---
+// 4. SUSPENSE EKLENTİSİ (VERCEL İÇİN ŞART)
 export default function Home() {
   return (
     <Suspense fallback={<div className="flex h-screen w-full items-center justify-center bg-black text-white">Yükleniyor...</div>}>

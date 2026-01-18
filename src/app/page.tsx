@@ -88,6 +88,53 @@ function HomeContent() {
     setShowCalibration(false);
   };
 
+  // 🏆 OKUMA BİTİNCE ÇALIŞACAK PUAN MOTORU (DÜZELTİLMİŞ)
+  const handleReadingComplete = async (sessionStats: { wpm: number; duration: number }) => {
+    // React Render çakışmasını önlemek için minik bir gecikme ekliyoruz
+    setTimeout(async () => {
+        // 1. Okuyucuyu kapat
+        setReadingState(prev => ({ ...prev, isActive: false }));
+        
+        const wordsRead = readingState.content.trim().split(/\s+/).length; 
+        
+        try {
+          // 3. Mevcut istatistikleri çek
+          const { data: currentProfile } = await supabase
+            .from("user_profiles")
+            .select("total_words_read, total_reading_time_sec, current_streak")
+            .eq("user_id", user?.id)
+            .maybeSingle(); // single() yerine maybeSingle() hata riskini azaltır
+
+          if (currentProfile) {
+            const newTotalWords = (currentProfile.total_words_read || 0) + wordsRead;
+            const newTotalTime = (currentProfile.total_reading_time_sec || 0) + sessionStats.duration;
+            
+            // 4. Yeni puanları veritabanına yaz
+            await supabase
+              .from("user_profiles")
+              .update({
+                total_words_read: newTotalWords,
+                total_reading_time_sec: newTotalTime,
+                last_seen_at: new Date().toISOString()
+              })
+              .eq("user_id", user?.id);
+
+            // 5. Ekrandaki istatistikleri güncelle
+            setStats(prev => ({
+              ...prev,
+              totalWords: newTotalWords,
+              totalTime: Math.round(newTotalTime / 60)
+            }));
+          }
+        } catch (error) {
+          console.error("Puan kaydedilemedi:", error);
+        }
+
+        // 6. Sınavı (Quiz) Başlat
+        setShowQuiz(true);
+    }, 0);
+  };
+
   if (!isLoaded) {
     return <div className="min-h-screen bg-black flex items-center justify-center text-white">Yükleniyor...</div>;
   }
@@ -117,11 +164,8 @@ function HomeContent() {
         <RSVPReader 
           content={readingState.content}
           wpm={readingState.wpm}
-          onClose={() => setReadingState({...readingState, isActive: false})}
-          onComplete={() => {
-            setReadingState({...readingState, isActive: false});
-            setShowQuiz(true); // OKUMA BİTTİ, QUİZİ AÇ!
-          }}
+          onClose={() => setReadingState(prev => ({ ...prev, isActive: false }))}
+          onComplete={handleReadingComplete}
         />
       )}
 

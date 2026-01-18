@@ -13,7 +13,7 @@ import { CalibrationModal } from "@/components/CalibrationModal";
 import { DisclaimerModal } from "@/components/DisclaimerModal";
 import Link from "next/link";
 
-// 1. TÜM MANTIĞI 'HomeContent' ADINDA BİR KUTUYA ALIYORUZ
+// 1. TÜM MANTIĞI 'HomeContent' ADINDA BİR KOMPONENT İÇİNE ALIYORUZ
 function HomeContent() {
   const { user, isLoaded } = useUser();
   const [readingState, setReadingState] = useState<{
@@ -57,6 +57,7 @@ function HomeContent() {
   };
 
   const handleBookSelect = (book: any) => {
+    // Profildeki hızı alalım (yoksa 300)
     const userWpm = 300; 
     setReadingState({
       isActive: true,
@@ -123,7 +124,7 @@ function HomeContent() {
       <main className="pt-32 pb-20 px-6 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           
-          {/* Dashboard Sol */}
+          {/* SOL: Dashboard */}
           <div className="lg:col-span-8 space-y-8">
             <div className="grid grid-cols-3 gap-4">
                <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
@@ -176,7 +177,7 @@ function HomeContent() {
             </div>
           </div>
 
-          {/* Menü Sağ */}
+          {/* SAĞ: Menü */}
           <div className="lg:col-span-4 space-y-6">
              <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
                 <h3 className="font-bold text-zinc-400 mb-4 text-sm uppercase tracking-wider">Hızlı Erişim</h3>
@@ -196,8 +197,7 @@ function HomeContent() {
   );
 }
 
-// 2. ANA PARÇAYI (HOME) BİR 'SUSPENSE' KALKANI İLE SARIYORUZ
-// İŞTE HATAYI ÇÖZEN KISIM BURASI:
+// 2. ANA EXPORT ARTIK SUSPENSE İÇİNDE! İŞTE ÇÖZÜM BU.
 export default function Home() {
   return (
     <Suspense fallback={<div className="flex h-screen w-full items-center justify-center bg-black text-white">Yükleniyor...</div>}>

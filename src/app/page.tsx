@@ -13,7 +13,7 @@ import { CalibrationModal } from "@/components/CalibrationModal";
 import { DisclaimerModal } from "@/components/DisclaimerModal";
 import Link from "next/link";
 
-// 1. TÜM MANTIĞI BURAYA ALDIK (Home yerine HomeContent)
+// 1. TÜM MANTIĞI 'HomeContent' ADINDA BİR KUTUYA ALIYORUZ
 function HomeContent() {
   const { user, isLoaded } = useUser();
   const [readingState, setReadingState] = useState<{
@@ -57,7 +57,6 @@ function HomeContent() {
   };
 
   const handleBookSelect = (book: any) => {
-    // Profildeki hızı alalım, yoksa 300
     const userWpm = 300; 
     setReadingState({
       isActive: true,
@@ -83,7 +82,6 @@ function HomeContent() {
           onComplete={(sessionStats) => {
              console.log("Seans bitti:", sessionStats);
              setReadingState({...readingState, isActive: false});
-             // Burada veritabanına kayıt yapılabilir
           }}
         />
       )}
@@ -125,10 +123,8 @@ function HomeContent() {
       <main className="pt-32 pb-20 px-6 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           
-          {/* SOL TARA: Dashboard */}
+          {/* Dashboard Sol */}
           <div className="lg:col-span-8 space-y-8">
-            
-            {/* İstatistik Kartları */}
             <div className="grid grid-cols-3 gap-4">
                <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
                   <div className="flex items-center gap-3 mb-2 text-zinc-400">
@@ -151,7 +147,6 @@ function HomeContent() {
                </div>
             </div>
 
-            {/* Kütüphane Önizleme */}
             <div className="p-8 rounded-3xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800">
                <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -165,9 +160,8 @@ function HomeContent() {
                   </Link>
                </div>
                
-               {/* Hızlı Başlangıç İçin Örnek Kitap */}
                <div className="group relative p-6 bg-black/40 rounded-xl border border-zinc-800 hover:border-purple-500/50 transition-all cursor-pointer"
-                    onClick={() => handleBookSelect({ id: 'demo', content: 'Bu bir deneme metnidir. Hızlı okuma sistemini test etmek için hazırlanmıştır. Gözlerinizi odak noktasından ayırmadan okumaya çalışın.', title: 'Hızlı Başlangıç Rehberi' })}
+                    onClick={() => handleBookSelect({ id: 'demo', content: 'Bu bir deneme metnidir.', title: 'Hızlı Başlangıç Rehberi' })}
                >
                   <div className="flex justify-between items-start">
                      <div>
@@ -180,10 +174,9 @@ function HomeContent() {
                   </div>
                </div>
             </div>
-
           </div>
 
-          {/* SAĞ TARAF: Menü & Ayarlar */}
+          {/* Menü Sağ */}
           <div className="lg:col-span-4 space-y-6">
              <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
                 <h3 className="font-bold text-zinc-400 mb-4 text-sm uppercase tracking-wider">Hızlı Erişim</h3>
@@ -196,26 +189,15 @@ function HomeContent() {
                    </Link>
                 </div>
              </div>
-
-             <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 opacity-60 pointer-events-none">
-                <div className="flex items-center justify-between mb-4">
-                   <h3 className="font-bold text-white">Günlük Hedef</h3>
-                   <Settings className="w-4 h-4 text-zinc-500"/>
-                </div>
-                <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden">
-                   <div className="w-[30%] h-full bg-green-500"></div>
-                </div>
-                <div className="mt-2 text-xs text-zinc-500 text-right">%30 Tamamlandı</div>
-             </div>
           </div>
-
         </div>
       </main>
     </div>
   );
 }
 
-// 2. ANA EXPORT ARTIK SADECE BİR KABUK VE SUSPENSE İÇERİYOR
+// 2. ANA PARÇAYI (HOME) BİR 'SUSPENSE' KALKANI İLE SARIYORUZ
+// İŞTE HATAYI ÇÖZEN KISIM BURASI:
 export default function Home() {
   return (
     <Suspense fallback={<div className="flex h-screen w-full items-center justify-center bg-black text-white">Yükleniyor...</div>}>

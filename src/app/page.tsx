@@ -14,6 +14,8 @@ import {
 import { RSVPReader } from "@/components/RSVPReader"; 
 import { CalibrationModal } from "@/components/CalibrationModal"; 
 import { DisclaimerModal } from "@/components/DisclaimerModal";
+import { LibraryManager } from "@/components/LibraryManager";
+import { Scoreboard } from "@/components/Scoreboard";
 import Link from "next/link";
 
 function HomeContent() {
@@ -132,11 +134,21 @@ function HomeContent() {
                <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800"><div className="text-zinc-400 mb-2">Seviye</div><div className="text-3xl font-black text-white">{stats.level}</div></div>
             </div>
             <div className="p-8 rounded-3xl bg-zinc-900 border border-zinc-800">
-               <h2 className="text-2xl font-bold mb-6">Kütüphanem</h2>
-               <div onClick={() => handleBookSelect({ id: 'demo', content: 'Hızlı okuma deneme metni...', title: 'Demo' })} className="p-6 bg-black/40 rounded-xl border border-zinc-800 hover:border-purple-500 cursor-pointer"><h3 className="font-bold">Hızlı Başlangıç</h3></div>
+               <LibraryManager userId={user.id} onSelectBook={handleBookSelect} />
             </div>
           </div>
-          <div className="lg:col-span-4"><div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800"><Link href="/library" className="block w-full text-center p-4 rounded-lg bg-white text-black font-bold">📚 Kütüphaneye Git</Link></div></div>
+          {/* SAĞ PANEL - GÜNCEL HALİ */}
+          <div className="lg:col-span-4 space-y-6">
+             {/* 1. Liderlik Tablosu */}
+             <Scoreboard />
+
+             {/* 2. Kütüphane Kısayolu (Opsiyonel, zaten solda var ama kalsın) */}
+             <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
+                <Link href="/library" className="block w-full text-center p-4 rounded-lg bg-white text-black font-bold hover:bg-zinc-200 transition">
+                   📚 Tüm Arşivi Gör
+                </Link>
+             </div>
+          </div>
         </div>
       </main>
     </div>

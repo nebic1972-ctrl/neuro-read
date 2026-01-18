@@ -39,12 +39,13 @@ export function CalibrationModal({ userId, onComplete }: CalibrationModalProps) 
   }, [userId]);
 
   const handleTestComplete = async (stats: { wpm: number; duration: number }) => {
-    // setTimeout, React'in "render" işlemini bitirmesine izin verir.
-    // Bu sayede "Cannot update component while rendering" hatası çözülür.
+    // 🛠️ DÜZELTME: setTimeout içine alarak React Render döngüsünü kırmıyoruz.
+    // Bu, "Cannot update component while rendering" hatasını kesin çözer.
     setTimeout(() => {
       setWpmResult(stats.wpm);
       setStep("RESULT");
-      // Arka planda kaydetmeyi dene
+      
+      // Kayıt işlemini başlat
       saveProfile(stats.wpm, stats.duration);
     }, 0);
   };
@@ -62,13 +63,13 @@ export function CalibrationModal({ userId, onComplete }: CalibrationModalProps) 
         .upsert({ 
             user_id: userId,
             mastery_level: level,
-            total_words_read: 40, 
-            total_reading_time_sec: duration,
+            total_words_read: 40, // Test metni uzunluğu
+            total_reading_time_sec: Math.floor(duration), // Tam sayıya yuvarla (int hatasını önler)
             current_streak: 1
         }, { onConflict: "user_id" });
 
       if (error) {
-        console.error("Supabase Hatası:", error);
+        console.error("Supabase Hatası Detayı:", error.message); // Mesajı net görelim
       } else {
         console.log("Başarıyla kaydedildi.");
       }

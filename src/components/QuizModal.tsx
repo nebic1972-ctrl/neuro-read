@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle, Brain, Trophy } from "lucide-react";
 
@@ -58,6 +58,9 @@ export function QuizModal({ bookTitle, onClose }: QuizModalProps) {
               <DialogTitle className="flex items-center gap-2 text-xl">
                 <Brain className="w-6 h-6 text-purple-500" /> Anlama Kontrolü
               </DialogTitle>
+              <DialogDescription className="text-zinc-400">
+                Okuduğunuz metni ne kadar anladığınızı kontrol edin.
+              </DialogDescription>
               <p className="text-zinc-500 text-sm">Soru {currentQ + 1} / {questions.length}</p>
             </DialogHeader>
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Trash2, BookOpen, Search, Filter, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -113,6 +113,9 @@ export function LibraryManager({ userId, onSelectBook }: LibraryManagerProps) {
           <DialogContent className="bg-zinc-950 border-zinc-800 text-white sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Kütüphaneye Ekle</DialogTitle>
+              <DialogDescription className="text-zinc-400">
+                Okumak istediğiniz metni veya kitabı buraya ekleyin.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 mt-4">
               <Input 

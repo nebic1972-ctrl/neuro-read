@@ -1,289 +1,225 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react"; // Suspense eklendi
+import { UserButton, useUser, SignInButton } from "@clerk/nextjs";
 import { supabase } from "@/lib/supabase";
-import { useUser } from "@clerk/nextjs";
-import { Button } from "@/components/ui/button";
-import { BookOpen, Trophy, BrainCircuit, Eye, Activity, Play } from "lucide-react";
+import { 
+  BookOpen, Brain, Zap, Activity, 
+  ArrowRight, LayoutDashboard, 
+  Settings, PlayCircle, Trophy 
+} from "lucide-react";
+import { RSVPReader } from "@/components/RSVPReader"; 
+import { CalibrationModal } from "@/components/CalibrationModal"; 
+import { DisclaimerModal } from "@/components/DisclaimerModal";
 import Link from "next/link";
 
-// Bileşenler
-import { RSVPReader } from "@/components/RSVPReader";
-import { FileUploader } from "@/components/FileUploader";
-import { Leaderboard } from "@/components/Leaderboard";
-import { ReadingStats } from "@/components/ReadingStats"; // Yeni grafik
-import { DiagnosticTest } from "@/components/DiagnosticTest"; // Yeni test
-import { TextPreview } from "@/components/TextPreview"; // Önizleme ekranı
-import { SessionResult } from "@/components/SessionResult"; // Sonuç ekranı
-import { UserProgress } from "@/components/UserProgress"; // İlerleme çubuğu
-import { DisclaimerModal } from "@/components/DisclaimerModal"; // Yasal uyarı
+// 1. TÜM MANTIĞI BURAYA ALDIK (Home yerine HomeContent)
+function HomeContent() {
+  const { user, isLoaded } = useUser();
+  const [readingState, setReadingState] = useState<{
+    isActive: boolean;
+    content: string;
+    wpm: number;
+    bookId?: string;
+  }>({ isActive: false, content: "", wpm: 300 });
 
-export default function HomePage() {
-  const { user } = useUser();
-  const searchParams = useSearchParams();
-  const bookId = searchParams.get("id");
+  // İstatistikler
+  const [stats, setStats] = useState({
+    totalWords: 0,
+    totalTime: 0,
+    streak: 0,
+    level: "NOVICE"
+  });
 
-  const [mounted, setMounted] = useState(false);
-  const [text, setText] = useState("");
-  const [isReading, setIsReading] = useState(false);
-  const [isPreviewing, setIsPreviewing] = useState(false); // Okuma öncesi mod
-  const [sessionData, setSessionData] = useState<any>(null); // Sonuç ekranı için veri
-  const [loadingBook, setLoadingBook] = useState(false);
-  const [statsTrigger, setStatsTrigger] = useState(0);
-
-  // --- KULLANICI PROFİL STATE'LERİ ---
-  const [needsTest, setNeedsTest] = useState(false);
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [recommendedBook, setRecommendedBook] = useState<any>(null); // Önerilen kitap
-
+  // Profil verisini çek
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // 1. Kullanıcı Profilini ve Önerilen Kitabı Çek
-  useEffect(() => {
-    const initSystem = async () => {
-      if (!user) return;
-      
-      // A) Profili Al
-      const { data: profile, error } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
-
-      if (error || !profile) {
-        setNeedsTest(true);
-      } else {
-        setUserProfile(profile);
-        setNeedsTest(false);
-
-        // B) PROFİLE GÖRE KİTAP ÖNER (YENİ KISIM 🧠)
-        let targetDifficulty = 1;
-        
-        // Eğitim ve Ustalığa göre zorluk belirle
-        if (profile.education_level === 'akademik' || profile.mastery_level === 'genius') targetDifficulty = 5;
-        else if (profile.education_level === 'lisans' || profile.mastery_level === 'elite') targetDifficulty = 3;
-        else targetDifficulty = 1;
-
-        // Veritabanından uygun kitabı bul
-        const { data: book } = await supabase
-            .from("library")
-            .select("*")
-            .lte('difficulty_level', targetDifficulty) // Kullanıcının seviyesine eşit veya altı
-            .order('difficulty_level', { ascending: false }) // En zorunu (kullanıcıya en yakınını) getir
-            .limit(1)
-            .single();
-        
-        if (book) setRecommendedBook(book);
-      }
-    };
-    
-    if (mounted) initSystem();
-  }, [user, mounted, statsTrigger]); // Test bitince (statsTrigger) profili tekrar çek
-
-  // 2. Kütüphaneden Kitap Yükleme (Varsa)
-  useEffect(() => {
-    if (bookId) {
-      const loadBook = async () => {
-        setLoadingBook(true);
-        const { data } = await supabase.from("library").select("content").eq("id", bookId).single();
-        if (data) {
-          setText(data.content);
-          setIsPreviewing(true); // Önce önizleme göster
-        }
-        setLoadingBook(false);
-      };
-      loadBook();
+    if (user) {
+      fetchStats();
     }
-  }, [bookId]);
+  }, [user]);
 
-  const handleSessionComplete = (stats: { wpm: number; duration: number; quizScore: number }) => {
-    setIsReading(false);
-    
-    const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
-    
-    // 🛡️ GÜVENLİK FİLTRESİ: 
-    // Eğer kelime sayısı 5'ten azsa (boş metin hatası) sonuç ekranını açma.
-    if (wordCount < 5) return; 
+  const fetchStats = async () => {
+    if(!user) return;
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
 
-    setSessionData({
-      wpm: stats.wpm,
-      wordCount: wordCount,
-      durationSeconds: stats.duration,
-      quizScore: stats.quizScore // ✅ Quiz skoru eklendi
+    if (data) {
+      setStats({
+        totalWords: data.total_words_read || 0,
+        totalTime: Math.round((data.total_reading_time_sec || 0) / 60),
+        streak: data.current_streak || 0,
+        level: data.mastery_level || "NOVICE"
+      });
+    }
+  };
+
+  const handleBookSelect = (book: any) => {
+    // Profildeki hızı alalım, yoksa 300
+    const userWpm = 300; 
+    setReadingState({
+      isActive: true,
+      content: book.content,
+      wpm: userWpm,
+      bookId: book.id
     });
   };
 
-  // Hydration Shield
-  if (!mounted) return <div className="min-h-screen bg-black flex items-center justify-center text-zinc-500 font-mono">Nöro-Sistem Yükleniyor...</div>;
-
   return (
-    <main className="min-h-screen bg-black text-white p-4 relative">
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30">
       
-      {/* YASAL KORUMA KALKANI - En üstte çalışır */}
-      <DisclaimerModal onAccept={() => console.log("Yasal metin kabul edildi.")} />
-      
-      {/* --- SONUÇ EKRANI (EN ÜSTTE - MODAL) --- */}
-      {sessionData && (
-        <SessionResult 
-          wpm={sessionData.wpm}
-          wordCount={sessionData.wordCount}
-          durationSeconds={sessionData.durationSeconds}
-          quizScore={sessionData.quizScore}
-          onClose={() => { 
-            setSessionData(null); // Sonuç ekranını kapat
-            setStatsTrigger(prev => prev + 1); // Grafikleri güncelle
+      {/* MODALLAR */}
+      {user && <CalibrationModal userId={user.id} onComplete={() => window.location.reload()} />}
+      <DisclaimerModal onAccept={() => {}} />
+
+      {/* OKUMA MODU AKTİFSE */}
+      {readingState.isActive && (
+        <RSVPReader 
+          content={readingState.content}
+          wpm={readingState.wpm}
+          onClose={() => setReadingState({...readingState, isActive: false})}
+          onComplete={(sessionStats) => {
+             console.log("Seans bitti:", sessionStats);
+             setReadingState({...readingState, isActive: false});
+             // Burada veritabanına kayıt yapılabilir
           }}
         />
       )}
 
-      {/* --- TEŞHİS TESTİ MODALI --- */}
-      {needsTest && (
-        <DiagnosticTest onComplete={() => { setNeedsTest(false); setStatsTrigger(prev => prev+1); }} />
-      )}
+      {/* NAVBAR */}
+      <nav className="border-b border-zinc-900 bg-black/50 backdrop-blur-xl fixed w-full z-40 top-0">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Brain className="w-8 h-8 text-purple-500" />
+            <span className="text-xl font-bold bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent">
+              Neuro-Read
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-500 border border-zinc-800 ml-2">
+              v2.0 Beta
+            </span>
+          </div>
 
-      {/* --- HEADER & PROFİL ÖZETİ --- */}
-      <header className="max-w-6xl mx-auto flex justify-between items-center py-6 mb-8 border-b border-zinc-800">
-        <div className="flex items-center gap-2">
-            <BrainCircuit className="w-8 h-8 text-purple-500" />
-            <h1 className="text-2xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-500">
-              Neuro-Read <span className="text-xs text-zinc-600 font-mono">v1.2</span>
-            </h1>
-        </div>
-
-        {userProfile && (
-            <div className="flex items-center gap-4">
-                {/* Ustalık Rozeti */}
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-700">
-                    <Trophy className={`w-4 h-4 ${userProfile.mastery_level === 'genius' ? 'text-yellow-400' : 'text-purple-400'}`} />
-                    <span className="text-xs font-bold uppercase text-zinc-300">
-                        {userProfile.mastery_level || "NOVICE"}
-                    </span>
+          <div className="flex items-center gap-6">
+            {!user ? (
+              <SignInButton mode="modal">
+                <button className="bg-white text-black px-4 py-2 rounded-lg font-bold hover:bg-zinc-200 transition">
+                  Giriş Yap
+                </button>
+              </SignInButton>
+            ) : (
+              <div className="flex items-center gap-4">
+                <div className="hidden md:flex flex-col items-end mr-2">
+                   <span className="text-xs text-zinc-400">Hoş geldin,</span>
+                   <span className="text-sm font-bold text-white">{user.firstName}</span>
                 </div>
-
-                {/* Hız Limiti Göstergesi */}
-                <div className="hidden md:flex flex-col items-end">
-                    <span className="text-[10px] text-zinc-500 uppercase">Güvenli Hız</span>
-                    <span className="text-sm font-mono font-bold text-green-400">{userProfile.base_wpm || 200} WPM</span>
-                </div>
-
-                {/* Görsel/Yüksek Odak Uyarıları */}
-                {(userProfile.visual_condition !== 'saglikli' || userProfile.adhd_mode_active) && (
-                    <div className="p-2 bg-blue-500/10 rounded-full border border-blue-500/20" title="Adaptif Görsel Mod Aktif">
-                        <Eye className="w-4 h-4 text-blue-400" />
-                    </div>
-                )}
-
-                <Link href="/library">
-                    <Button variant="outline" className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10 gap-2">
-                        <BookOpen className="w-4 h-4" /> Kütüphane
-                    </Button>
-                </Link>
-            </div>
-        )}
-      </header>
-
-      {/* --- ANA İÇERİK --- */}
-      {loadingBook ? (
-        <div className="flex flex-col items-center justify-center h-64 animate-pulse">
-           <Activity className="w-10 h-10 text-purple-500 mb-4" />
-           <p className="text-zinc-500 font-mono">Sinaptik Veri Yükleniyor...</p>
-        </div>
-      ) : isReading ? (
-        // Okuyucuya Kullanıcı Ayarlarını Gönderiyoruz
-        <RSVPReader 
-           content={text} 
-           wpm={userProfile?.base_wpm || 300}
-           isAdhdMode={userProfile?.adhd_mode_active}
-           onClose={() => setIsReading(false)} 
-           onComplete={handleSessionComplete}
-        />
-      ) : isPreviewing ? (
-        // Önizleme Modunda
-        <TextPreview 
-          content={text} 
-          userWpm={userProfile?.base_wpm || 250}
-          onStart={() => { 
-              setSessionData(null); // 🛡️ GEÇMİŞ KARNEYİ SİL
-              setIsPreviewing(false); 
-              setIsReading(true); 
-          }} 
-          onCancel={() => setIsPreviewing(false)} 
-        />
-      ) : (
-        <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4">
-          
-          {/* İLERLEME VE SEVİYE ÇUBUĞU */}
-          {userProfile && (
-             <UserProgress 
-                currentWpm={userProfile.base_wpm || 200} 
-                masteryLevel={userProfile.mastery_level || 'novice'} 
-             />
-          )}
-          
-          {/* Dosya Yükleyici */}
-          <FileUploader onTextLoaded={(t) => { setText(t); setIsPreviewing(true); }} />
-          
-          {/* GÜNLÜK AKILLI ÖNERİ KARTI */}
-          {recommendedBook && (
-              <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-zinc-800 p-6 rounded-xl flex justify-between items-center animate-in slide-in-from-left">
-                  <div>
-                      <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded">
-                              Sizin İçin Seçildi
-                          </span>
-                          <span className="text-[10px] text-zinc-500">
-                              ({userProfile?.education_level?.toUpperCase()} Seviyesi)
-                          </span>
-                      </div>
-                      <h3 className="text-xl font-bold text-white">{recommendedBook.title || "İsimsiz Metin"}</h3>
-                      <p className="text-sm text-zinc-400 line-clamp-1">{recommendedBook.content.substring(0, 80)}...</p>
-                  </div>
-                  
-                  <Button 
-                      onClick={() => { setText(recommendedBook.content); setIsPreviewing(true); }}
-                      className="bg-white text-black hover:bg-zinc-200 font-bold"
-                  >
-                      Hemen Oku <Play className="w-4 h-4 ml-2" />
-                  </Button>
+                <UserButton afterSignOutUrl="/"/>
               </div>
-          )}
-          
-          {/* Dashboard Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-             {/* Grafik - Sol Geniş Alan */}
-             <div className="lg:col-span-2 h-80">
-                <ReadingStats refreshTrigger={statsTrigger} />
-             </div>
-             
-             {/* Liderlik Tablosu - Sağ Dar Alan */}
-             <div className="h-80">
-                <Leaderboard />
-             </div>
+            )}
           </div>
         </div>
-      )}
+      </nav>
 
-      {/* --- FOOTER --- */}
-      <footer className="border-t border-zinc-900 mt-20 py-10 text-center">
-        <div className="max-w-4xl mx-auto px-6">
-          <p className="text-zinc-600 text-xs leading-relaxed">
-            <strong>YASAL UYARI:</strong> Bu uygulama bir tıbbi cihaz değildir ve tıbbi tavsiye vermez. 
-            Sunulan içerikler ve egzersizler sadece eğitim ve kişisel gelişim amaçlıdır. 
-            Göz sağlığı veya nörolojik durumlarla ilgili endişeleriniz için lütfen bir uzmana danışın.
-          </p>
-          <div className="flex justify-center gap-6 mt-4 text-[10px] text-zinc-500 font-mono uppercase tracking-widest">
-            <span>Gizlilik Politikası</span>
-            <span>Kullanım Koşulları</span>
-            <span>KVKK Aydınlatma Metni</span>
+      {/* HERO SECTION */}
+      <main className="pt-32 pb-20 px-6 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+          
+          {/* SOL TARA: Dashboard */}
+          <div className="lg:col-span-8 space-y-8">
+            
+            {/* İstatistik Kartları */}
+            <div className="grid grid-cols-3 gap-4">
+               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
+                  <div className="flex items-center gap-3 mb-2 text-zinc-400">
+                     <BookOpen className="w-4 h-4"/> <span>Toplam Kelime</span>
+                  </div>
+                  <div className="text-3xl font-black text-white">{stats.totalWords.toLocaleString()}</div>
+               </div>
+               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
+                  <div className="flex items-center gap-3 mb-2 text-zinc-400">
+                     <Activity className="w-4 h-4"/> <span>Odak Süresi</span>
+                  </div>
+                  <div className="text-3xl font-black text-white">{stats.totalTime} <span className="text-sm font-normal text-zinc-600">dk</span></div>
+               </div>
+               <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-10"><Trophy className="w-24 h-24 text-yellow-500"/></div>
+                  <div className="flex items-center gap-3 mb-2 text-zinc-400">
+                     <Zap className="w-4 h-4 text-yellow-500"/> <span>Seviye</span>
+                  </div>
+                  <div className="text-3xl font-black text-white uppercase">{stats.level}</div>
+               </div>
+            </div>
+
+            {/* Kütüphane Önizleme */}
+            <div className="p-8 rounded-3xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800">
+               <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <LayoutDashboard className="w-6 h-6 text-purple-500"/> 
+                    Kütüphanem
+                  </h2>
+                  <Link href="/library">
+                    <button className="text-sm text-zinc-400 hover:text-white flex items-center gap-1 transition">
+                       Tümünü Gör <ArrowRight className="w-4 h-4"/>
+                    </button>
+                  </Link>
+               </div>
+               
+               {/* Hızlı Başlangıç İçin Örnek Kitap */}
+               <div className="group relative p-6 bg-black/40 rounded-xl border border-zinc-800 hover:border-purple-500/50 transition-all cursor-pointer"
+                    onClick={() => handleBookSelect({ id: 'demo', content: 'Bu bir deneme metnidir. Hızlı okuma sistemini test etmek için hazırlanmıştır. Gözlerinizi odak noktasından ayırmadan okumaya çalışın.', title: 'Hızlı Başlangıç Rehberi' })}
+               >
+                  <div className="flex justify-between items-start">
+                     <div>
+                        <h3 className="text-lg font-bold text-white mb-2 group-hover:text-purple-400 transition-colors">Hızlı Başlangıç Rehberi</h3>
+                        <p className="text-zinc-500 text-sm line-clamp-2">Sistemi test etmek ve kalibrasyon yapmak için kısa bir metin.</p>
+                     </div>
+                     <div className="p-3 bg-purple-500/10 rounded-full text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition-all">
+                        <PlayCircle className="w-6 h-6" />
+                     </div>
+                  </div>
+               </div>
+            </div>
+
           </div>
-          <p className="text-zinc-700 text-[10px] mt-4">
-            © {new Date().getFullYear()} Neuro-Read Platform. Tüm Hakları Saklıdır.
-          </p>
+
+          {/* SAĞ TARAF: Menü & Ayarlar */}
+          <div className="lg:col-span-4 space-y-6">
+             <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
+                <h3 className="font-bold text-zinc-400 mb-4 text-sm uppercase tracking-wider">Hızlı Erişim</h3>
+                <div className="space-y-2">
+                   <Link href="/library" className="block w-full text-left p-4 rounded-lg bg-zinc-950 hover:bg-zinc-800 transition border border-zinc-900 hover:border-zinc-700">
+                      📚 Kütüphaneye Git
+                   </Link>
+                   <Link href="/admin" className="block w-full text-left p-4 rounded-lg bg-zinc-950 hover:bg-zinc-800 transition border border-zinc-900 hover:border-zinc-700">
+                      ⚙️ İçerik Yönetimi (Admin)
+                   </Link>
+                </div>
+             </div>
+
+             <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 opacity-60 pointer-events-none">
+                <div className="flex items-center justify-between mb-4">
+                   <h3 className="font-bold text-white">Günlük Hedef</h3>
+                   <Settings className="w-4 h-4 text-zinc-500"/>
+                </div>
+                <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden">
+                   <div className="w-[30%] h-full bg-green-500"></div>
+                </div>
+                <div className="mt-2 text-xs text-zinc-500 text-right">%30 Tamamlandı</div>
+             </div>
+          </div>
+
         </div>
-      </footer>
-    </main>
+      </main>
+    </div>
+  );
+}
+
+// 2. ANA EXPORT ARTIK SADECE BİR KABUK VE SUSPENSE İÇERİYOR
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="flex h-screen w-full items-center justify-center bg-black text-white">Yükleniyor...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }

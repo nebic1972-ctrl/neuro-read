@@ -123,6 +123,12 @@ export function CalibrationModal({ userId, onComplete }: CalibrationModalProps) 
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold text-center">Test Tamamlandı! 🎉</DialogTitle>
             </DialogHeader>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="mt-4 bg-white text-black px-4 py-2 rounded hover:bg-gray-200"
+            >
+              Tamam, Başla
+            </button>
             <div className="py-6 text-center space-y-4">
               <div className="text-zinc-400">Tespit Edilen Hızın</div>
               <div className="text-5xl font-black text-purple-500">{wpmResult} <span className="text-xl text-zinc-500">K/DK</span></div>

@@ -4,7 +4,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, Suspense } from "react";
-import { UserButton, useUser, SignInButton } from "@clerk/nextjs";
+import { UserButton, useUser, SignInButton, RedirectToSignIn } from "@clerk/nextjs";
 import { supabase } from "@/lib/supabase";
 import { 
   BookOpen, Brain, Zap, Activity, 
@@ -135,19 +135,19 @@ function HomeContent() {
     }, 0);
   };
 
-  // --- GÜVENLİK KİLİDİ ---
-  // Kullanıcı bilgisi henüz gelmediyse sayfayı çizmeye çalışma, bekle.
-  if (!isLoaded || !user) {
+  // 1. Clerk henüz yüklenmediyse bekle
+  if (!isLoaded) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        <div className="text-center">
-          <h2 className="text-xl font-bold">Nöro-Okuyucu Yükleniyor...</h2>
-          <p className="text-gray-400 text-sm mt-2">Lütfen bekleyin veya sayfayı yenileyin.</p>
-        </div>
+        <div className="text-xl font-bold animate-pulse">Yükleniyor...</div>
       </div>
     );
   }
-  // ------------------------
+
+  // 2. Clerk yüklendi ama kullanıcı giriş yapmamışsa -> GİRİŞE YOLLA
+  if (!user) {
+    return <RedirectToSignIn />;
+  }
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30">

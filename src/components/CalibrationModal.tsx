@@ -1,149 +1,90 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase";
-import { Loader2, Play, Brain, ArrowRight } from "lucide-react";
-import { RSVPReader } from "@/components/RSVPReader";
+// Supabase'i şimdilik kullanmıyoruz, hata vermesin diye kaldırdık veya yorum satırı yaptık
+// import { supabase } from "@/lib/supabase"; 
 
-interface CalibrationModalProps {
-  userId: string;
-  onComplete: () => void;
-}
-
-export function CalibrationModal({ userId, onComplete }: CalibrationModalProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [step, setStep] = useState<"INTRO" | "READING" | "RESULT">("INTRO");
-  const [loading, setLoading] = useState(false);
-  const [wpmResult, setWpmResult] = useState(0);
+export default function CalibrationModal() {
+  const [isOpen, setIsOpen] = useState(true);
+  const [step, setStep] = useState(0);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [wpm, setWpm] = useState(0);
 
   // Test Metni
-  const testContent = "Hızlı okuma, beynin bilgiyi işleme hızını artırmayı hedefleyen bir tekniktir. Göz kaslarını eğiterek ve iç seslendirmeyi azaltarak daha kısa sürede daha çok kelime okuyabilirsiniz. Bu kısa test, mevcut seviyenizi belirlemek içindir. Lütfen odaklanarak okuyun.";
+  const text = "Okuma hızınızı ölçmek için bu metni normal hızınızda okuyun. Her kelimeyi okuduğunuzda ekrana tıklayın.";
 
-  // Profil kontrolü
   useEffect(() => {
-    async function checkProfile() {
-      const { data } = await supabase
-        .from("user_profiles")
-        .select("total_words_read")
-        .eq("user_id", userId)
-        .maybeSingle(); // maybeSingle hata vermez
-      
-      // Kayıt yoksa veya hiç okumamışsa testi aç
-      if (!data || data.total_words_read === 0) {
-        setIsOpen(true);
-      }
+    // Sayfa yüklendiğinde modal açılsın
+    setIsOpen(true);
+  }, []);
+
+  const handleTap = () => {
+    if (step === 0) {
+      setStartTime(Date.now());
     }
-    if (userId) checkProfile();
-  }, [userId]);
 
-  const handleTestComplete = async (stats: { wpm: number; duration: number }) => {
-    // 🛠️ DÜZELTME: setTimeout içine alarak React Render döngüsünü kırmıyoruz.
-    // Bu, "Cannot update component while rendering" hatasını kesin çözer.
-    setTimeout(() => {
-      setWpmResult(stats.wpm);
-      setStep("RESULT");
-      
-      // Kayıt işlemini başlat
-      saveProfile(stats.wpm, stats.duration);
-    }, 0);
-  };
-
-  const saveProfile = async (wpm: number, duration: number) => {
-    try {
-      let level = "NOVICE";
-      if (wpm > 300) level = "APPRENTICE";
-      if (wpm > 600) level = "MASTER";
-
-      console.log("Kaydediliyor...", { userId, level, wpm });
-
-      const { error } = await supabase
-        .from("user_profiles")
-        .upsert({ 
-            user_id: userId,
-            mastery_level: level,
-            total_words_read: 40, // Test metni uzunluğu
-            total_reading_time_sec: Math.floor(duration), // Tam sayıya yuvarla (int hatasını önler)
-            current_streak: 1
-        }, { onConflict: "user_id" });
-
-      if (error) {
-        console.error("Supabase Hatası Detayı:", error.message); // Mesajı net görelim
-      } else {
-        console.log("Başarıyla kaydedildi.");
-      }
-    } catch (error) {
-      console.error("Beklenmeyen hata:", error);
+    if (step < text.split(" ").length - 1) {
+      setStep(step + 1);
+    } else {
+      finishTest();
     }
   };
 
-  // PANELE GİT (Hata olsa bile çalışır — reload yok, sadece modal kapanır)
-  const handleGoToDashboard = () => {
-    setIsOpen(false);
-    onComplete();
+  const finishTest = () => {
+    if (startTime) {
+      const durationInSeconds = (Date.now() - startTime) / 1000;
+      const words = text.split(" ").length;
+      const calculatedWpm = Math.round((words / durationInSeconds) * 60);
+      setWpm(calculatedWpm);
+      
+      // Hız sonucunu burada veritabanına kaydedebiliriz (şimdilik sadece gösteriyoruz)
+      setStep(step + 1); // Sonuç ekranına geç
+    }
   };
+
+  if (!isOpen) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={() => {}}>
-      <DialogContent className="bg-zinc-950 border-zinc-800 text-white sm:max-w-[600px] [&>button]:hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-[#111] border border-white/10 shadow-2xl overflow-hidden">
         
-        {step === "INTRO" && (
-          <>
-            <DialogHeader>
-              <DialogTitle className="text-2xl font-bold text-center flex items-center justify-center gap-2">
-                <Brain className="w-6 h-6 text-purple-500"/> Hız Testi
-              </DialogTitle>
-              <DialogDescription className="text-center text-zinc-400">
-                Sistemi kişiselleştirmek için kısa bir okuma testi yapacağız.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-8 flex justify-center">
-              <Button 
-                onClick={() => setStep("READING")} 
-                className="bg-white text-black hover:bg-zinc-200 font-bold px-8 py-6 text-lg"
-              >
-                <Play className="w-5 h-5 mr-2 fill-black"/> Başla
-              </Button>
+        {/* Adım 1: Test Aşaması */}
+        {step < text.split(" ").length ? (
+          <div onClick={handleTap} className="cursor-pointer py-16 px-8 text-center select-none active:scale-95 transition-transform">
+            <h2 className="text-xl font-medium text-gray-400 mb-8 uppercase tracking-widest">Hız Testi</h2>
+            <div className="text-5xl md:text-6xl font-black text-white mb-8">
+              {text.split(" ")[step]}
             </div>
-          </>
-        )}
+            <p className="text-sm text-gray-500 animate-pulse">
+              Kelimeyi okuyunca ekrana dokun/tıkla
+            </p>
+          </div>
+        ) : (
+          
+          /* Adım 2: Sonuç Ekranı (BUTON BURADA) */
+          <div className="py-12 px-8 text-center">
+            <h2 className="text-3xl font-bold text-white mb-2">Harika! 🎉</h2>
+            <p className="text-gray-400 mb-8">Başlangıç hızın tespit edildi.</p>
+            
+            <div className="flex justify-center items-end gap-2 mb-8">
+              <span className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-600">
+                {wpm}
+              </span>
+              <span className="text-xl text-gray-500 font-medium mb-4">Kelime/Dk</span>
+            </div>
 
-        {step === "READING" && (
-          <RSVPReader 
-            content={testContent} 
-            wpm={300} 
-            onClose={() => setStep("INTRO")} 
-            onComplete={handleTestComplete}
-          />
-        )}
-
-        {step === "RESULT" && (
-          <>
-            <DialogHeader>
-              <DialogTitle className="text-2xl font-bold text-center">Test Tamamlandı! 🎉</DialogTitle>
-            </DialogHeader>
+            {/* 👇 İŞTE EKLENEN BUTON 👇 */}
             <button
               onClick={() => setIsOpen(false)}
-              className="mt-4 bg-white text-black px-4 py-2 rounded hover:bg-gray-200"
+              className="w-full bg-white text-black font-bold py-4 rounded-xl hover:bg-gray-200 transition-all active:scale-95"
             >
-              Tamam, Başla
+              Tamam, Başla 🚀
             </button>
-            <div className="py-6 text-center space-y-4">
-              <div className="text-zinc-400">Tespit Edilen Hızın</div>
-              <div className="text-5xl font-black text-purple-500">{wpmResult} <span className="text-xl text-zinc-500">K/DK</span></div>
-              <p className="text-sm text-zinc-500">Profilin buna göre ayarlandı.</p>
-            </div>
-            <Button 
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold h-12 text-lg"
-              onClick={handleGoToDashboard}
-            >
-              Panele Git <ArrowRight className="ml-2 w-5 h-5"/>
-            </Button>
-          </>
-        )}
+            {/* 👆 BUTON BİTTİ 👆 */}
 
-      </DialogContent>
-    </Dialog>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
